@@ -1,0 +1,4 @@
+name: production
+variables:
+  - name: baseUrl
+    value: "{{process.env.OMDI_BASE_URL}}"

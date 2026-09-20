@@ -1,0 +1,41 @@
+info:
+  name: healthz
+  type: http
+  seq: 1
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/healthz"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("returns only the liveness status", function () {
+          expect(res.getBody()).to.deep.equal({ status: "ok" });
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers['content-type']
+      operator: contains
+      value: application/json
+    - expression: res.body.status
+      operator: eq
+      value: ok
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: true
+
+docs: |-
+  # healthz
+
+  Returns the minimal unauthenticated liveness status. It does not expose dependency, host, build, or configuration details.

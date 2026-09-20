@@ -1,0 +1,28 @@
+openapi: 3.2.1
+info:
+  title: OpenMediaDownloaderIOS API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Check service liveness
+      security: []
+      responses:
+        "200":
+          description: The service process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    const: ok
+                additionalProperties: false
+              example:
+                status: ok

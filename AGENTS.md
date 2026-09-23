@@ -3,10 +3,10 @@
 ## Project
 
 - Module: `github.com/miguins/open-media-downloader-ios`; executable: `omdi`.
-- Phases 0 and 1 are complete; Phase 2 is next and has not started. Current scope: `omdi serve`, `omdi keys create|list|revoke`, unauthenticated `GET /healthz` and `GET /readyz`, SQLite persistence, API-key authentication middleware (not yet mounted), and URL/SSRF policy.
+- Phases 0–2 are complete; Phase 3 (real extractors) is next and has not started. Current scope: `omdi serve`, `omdi keys create|list|revoke`, `omdi jobs list|delete|purge`, `GET /healthz`, `GET /readyz`, authenticated `/v1/jobs` create/get/cancel, token-based `/v1/downloads/{token}`, a SQLite queue with one worker and a fake extractor, and periodic cleanup.
 - Read `docs/roadmap.md` before planning work. It is the source of truth for implementation order, status, and the next milestone; update it whenever delivery status changes. `docs/architecture.md` describes the target system, not current behavior.
 - Docker Compose is the primary development environment. Use the `Makefile` targets instead of requiring host Go, Node.js, Bruno, or media tools.
-- Keep `cmd/omdi` for composition and CLI parsing, `internal/config` for configuration, `internal/api` for HTTP contracts, `internal/app` for lifecycle, `internal/store` for SQLite and migrations, `internal/auth` for API keys, `internal/id` for identifiers, `internal/job` for domain models, `internal/urlpolicy` for URL and network destination policy, and `internal/readiness` for dependency checks. Do not create empty future packages or speculative interfaces.
+- Keep `cmd/omdi` for composition and CLI parsing, `internal/config` for configuration, `internal/api` for HTTP contracts, `internal/app` for lifecycle, `internal/store` for SQLite and migrations, `internal/auth` for API keys, `internal/id` for identifiers, `internal/job` for domain models, `internal/urlpolicy` for URL and network destination policy, `internal/readiness` for dependency checks, `internal/storage` for the on-disk layout and extractor-output ingestion, `internal/worker` for job execution, `internal/extractor` for extractor implementations, and `internal/cleanup` for recovery and expiry. Do not create empty future packages or speculative interfaces.
 - Keep the OpenAPI contract in `docs/openapi.yaml` and the executable Bruno collection in `collection/`. Container and media-tool definitions belong in `Dockerfile`, `compose.yaml`, and `docker/`.
 
 ## Engineering
@@ -14,7 +14,7 @@
 - Write all code, comments, documentation, API descriptions, and messages in English.
 - Follow SOLID and idiomatic Go. Prefer the standard library, small packages, explicit dependencies, and simple concrete types; add interfaces only at real substitution boundaries.
 - Use Superpowers for specification-driven development and TDD for every behavior change.
-- Maintain at least 90% unit-test coverage. Security-critical code requires 100% coverage; `scripts/check-coverage.sh` enforces it for `internal/auth` and `internal/urlpolicy`, and new security-critical packages must be added there.
+- Maintain at least 90% unit-test coverage. Security-critical code requires 100% coverage; `scripts/check-coverage.sh` enforces it for `internal/auth`, `internal/storage`, and `internal/urlpolicy`, and new security-critical packages must be added there.
 - Keep Go unit tests beside their packages; reserve root `tests/` for integration and end-to-end tests.
 - Use only the newest stable dependency and tool releases. Never use alpha, beta, RC, nightly, preview, or floating versions.
 - Use `make compose-up` and `make compose-down` for the local service. Use the other `Makefile` targets for formatting, tests, coverage, linting, security checks, and builds; run `make ci` before handoff when Docker is available.
@@ -22,7 +22,7 @@
 ## HTTP contracts
 
 - Every new or changed HTTP endpoint must update its tests, OpenAPI definition, and organized Bruno request, assertions, and relevant environments in the same change.
-- Name each Bruno request after the endpoint's final path segment; for example, `/healthz` is named `healthz`.
+- Name each Bruno request after the endpoint's final static path segment; for example, `/healthz` is named `healthz` and `POST /v1/jobs` is named `jobs`. When a path ends in a parameter or several methods share a path, use `<verb>-<resource>`, for example `get-job` and `cancel-job` for `/v1/jobs/{id}`.
 
 ## Security and privacy
 

@@ -6,9 +6,9 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 1 — Secure core is complete. Phase 2 has not started.**
+**Phase 2 — Job lifecycle is complete. Phase 3 has not started.**
 
-The next development effort is a Superpowers design and implementation plan for **Phase 2 — Job lifecycle**, beginning with the create, poll, and cancel endpoints that mount the Phase 1 authentication middleware.
+The next development effort is a Superpowers design and implementation plan for **Phase 3 — Real extractors**, beginning with the `yt-dlp` adapter behind the Phase 2 `Extractor` boundary and extractor egress control.
 
 ## Phase 0 — Project foundation
 
@@ -38,7 +38,7 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 
 ## Phase 2 — Job lifecycle
 
-**Status: Planned — next**
+**Status: Complete** — [design](superpowers/specs/2026-09-23-phase-2-job-lifecycle-design.md), [plan](superpowers/plans/2026-09-23-phase-2-job-lifecycle.md)
 
 - Create, poll, and cancel endpoints.
 - Persistent queue and single worker.
@@ -46,10 +46,11 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 - Temporary token generation.
 - Streaming download endpoint.
 - Cleanup and startup recovery.
+- Operator job management: `omdi jobs list`, `delete`, and `purge`.
 
 ## Phase 3 — Real extractors
 
-**Status: Planned**
+**Status: Planned — next**
 
 - `yt-dlp` adapter.
 - `ffprobe` metadata inspection.

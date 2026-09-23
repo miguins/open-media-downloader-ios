@@ -1,6 +1,6 @@
 # OpenMediaDownloaderIOS
 
-OpenMediaDownloaderIOS is the foundation of a self-hosted media download API intended for use from an iOS Shortcut. The current milestone provides the secure core: validated configuration, SQLite persistence, API-key management, authentication middleware, URL and SSRF policy, and unauthenticated `GET /healthz` and `GET /readyz`. Job endpoints, media downloads, and extractors are roadmap work.
+OpenMediaDownloaderIOS is the foundation of a self-hosted media download API intended for use from an iOS Shortcut. The current milestone provides the complete job lifecycle with a fake extractor: authenticated endpoints to queue, poll, and cancel jobs, a persistent single-worker queue, short-lived download links, and automatic cleanup. Real extractors (`yt-dlp`, `gallery-dl`) arrive in Phase 3; until then every job produces a small synthetic video.
 
 ## Requirements
 
@@ -58,14 +58,15 @@ Unset variables use their defaults. A variable that is set but empty, surrounded
 | `OMDI_JOB_TIMEOUT` | `10m` | Duration 30s–2h. |
 | `OMDI_MAX_JOB_BYTES` | `2147483648` | Integer 1 MiB–100 GiB. |
 | `OMDI_MIN_FREE_BYTES` | `1073741824` | Integer 0–1 TiB; readiness fails below it. |
-| `OMDI_JOB_RETENTION` | `24h` | Duration 5m–720h. |
+| `OMDI_JOB_RETENTION` | `24h` | Duration 5m–720h, above `OMDI_JOB_TIMEOUT`. |
 | `OMDI_TOKEN_TTL` | `15m` | Duration 1m–24h, not above `OMDI_JOB_RETENTION`. |
 | `OMDI_YTDLP_PATH` | `/opt/media-tools/bin/yt-dlp` | Absolute, clean path. |
 | `OMDI_GALLERYDL_PATH` | `/opt/media-tools/bin/gallery-dl` | Absolute, clean path. |
 | `OMDI_FFMPEG_PATH` | `/opt/ffmpeg/bin/ffmpeg` | Absolute, clean path. |
 | `OMDI_FFPROBE_PATH` | `/opt/ffmpeg/bin/ffprobe` | Absolute, clean path. |
+| `OMDI_PUBLIC_URL` | `http://localhost:8080` | Absolute `http`/`https` URL without user info, query, or fragment; base of download links. |
+| `OMDI_MAX_QUEUED_JOBS` | `10` | Integer 1–1000; queued plus running jobs allowed per API key. |
 
-Job, size, retention, and token settings are validated now and enforced by the job lifecycle in Phase 2.
 
 ## API keys
 
@@ -77,15 +78,38 @@ make key-list
 make key-revoke ID=<id>
 ```
 
-Names contain 1–64 letters, digits, `.`, `_`, or `-`. Clients will send keys as `Authorization: Bearer <key>`; query-string keys are never accepted. No endpoint requires a key until Phase 2 adds job endpoints.
+Names contain 1–64 letters, digits, `.`, `_`, or `-`. Clients send keys as `Authorization: Bearer <key>`; query-string keys are never accepted.
+
+## Jobs and downloads
+
+```bash
+KEY=omdi_...   # from make key-create
+curl -s -X POST http://localhost:8080/v1/jobs \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"url":"https://vimeo.com/76979871"}'
+curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
+```
+
+- `POST /v1/jobs` queues a job (`202`). Each key may have `OMDI_MAX_QUEUED_JOBS` queued or running jobs.
+- `GET /v1/jobs/{id}` returns the status. For a succeeded job, each item carries a `download_url` that expires after `OMDI_TOKEN_TTL`; every poll issues fresh links and invalidates earlier ones.
+- `DELETE /v1/jobs/{id}` cancels a queued or running job.
+- `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`.
+
+Jobs, files, and tokens are removed automatically after `OMDI_JOB_RETENTION`. Operators can manage jobs from the CLI:
+
+```bash
+make job-list
+make job-delete ID=<id>        # refuses running jobs
+make job-purge [OWNER=<key-id>] # removes every job, including running ones
+```
 
 ## Bruno collection
 
-Open `collection/` in Bruno and select the `local` environment for host-local requests. The collection contains the organized `health/healthz` and `health/readyz` requests and executable assertions.
+Open `collection/` in Bruno and select the `local` environment for host-local requests. The collection contains the `health`, `jobs`, and `downloads` folders with executable assertions. Requests that need a key read it from `OMDI_API_KEY` in `collection/.env`.
 
 For production, copy `collection/.env.example` to `collection/.env`, replace the placeholder with the real HTTPS base URL, and select `production`. This file is separate from the project-root `.env` and is ignored by Git.
 
-Run the local collection against the Compose service without installing Bruno or Node.js:
+Run the local collection against the Compose service without installing Bruno or Node.js. It creates a temporary API key and revokes it afterwards:
 
 ```bash
 make collection-test
@@ -113,6 +137,9 @@ make collection-test
 | `make key-create NAME=...` | Create an API key in the Compose data volume and print it once. |
 | `make key-list` | List API keys without secrets. |
 | `make key-revoke ID=...` | Revoke an API key. |
+| `make job-list` | List jobs without their source URLs. |
+| `make job-delete ID=...` | Delete a job that is not running, with its files. |
+| `make job-purge [OWNER=...]` | Remove every job, or one key's jobs, including running ones. |
 
 ## Selected versions
 
@@ -145,9 +172,9 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-There are no job endpoints, queue, worker, download endpoint, extractor invocation, or iOS Shortcut package yet.
+Jobs use a fake extractor, so no real media is downloaded yet, and there is no iOS Shortcut package.
 
-Phases 0 (project foundation) and 1 (secure core) are complete. The next development effort is Phase 2, the job lifecycle. See the ordered delivery status in the [Roadmap](docs/roadmap.md) and the planned system boundaries in [Architecture](docs/architecture.md).
+Phases 0 (project foundation), 1 (secure core), and 2 (job lifecycle) are complete. The next development effort is Phase 3, real extractors. See the ordered delivery status in the [Roadmap](docs/roadmap.md) and the planned system boundaries in [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

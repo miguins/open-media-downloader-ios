@@ -16,7 +16,7 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
 
-const usage = "usage: omdi serve"
+const usage = "usage: omdi serve | omdi keys create --name <name> | omdi keys list | omdi keys revoke <id>"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -25,12 +25,23 @@ func main() {
 	os.Exit(code)
 }
 
-func run(ctx context.Context, args []string, _, stderr io.Writer, lookup func(string) (string, bool)) int {
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) int {
 	logger := slog.New(slog.NewJSONHandler(stderr, nil))
 	switch {
 	case len(args) == 1 && args[0] == "serve":
 		return withStore(ctx, logger, lookup, func(cfg config.Config, st *store.Store) int {
 			return serve(ctx, cfg, st, logger)
+		})
+	case len(args) >= 2 && args[0] == "keys":
+		command, ok := parseKeysCommand(args[1:])
+		if !ok {
+			logger.Error(usage)
+
+			return 2
+		}
+
+		return withStore(ctx, logger, lookup, func(_ config.Config, st *store.Store) int {
+			return command.run(ctx, st, stdout, logger)
 		})
 	default:
 		logger.Error(usage)

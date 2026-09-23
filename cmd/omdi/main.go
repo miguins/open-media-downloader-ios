@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -11,30 +12,66 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/api"
 	"github.com/miguins/open-media-downloader-ios/internal/app"
 	"github.com/miguins/open-media-downloader-ios/internal/config"
+	"github.com/miguins/open-media-downloader-ios/internal/readiness"
+	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
 
+const usage = "usage: omdi serve"
+
 func main() {
-	os.Exit(run(os.Args[1:]))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.LookupEnv)
+	stop()
+	os.Exit(code)
 }
 
-func run(args []string) int {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	if len(args) != 1 || args[0] != "serve" {
-		logger.Error("usage: omdi serve")
+func run(ctx context.Context, args []string, _, stderr io.Writer, lookup func(string) (string, bool)) int {
+	logger := slog.New(slog.NewJSONHandler(stderr, nil))
+	switch {
+	case len(args) == 1 && args[0] == "serve":
+		return withStore(ctx, logger, lookup, func(cfg config.Config, st *store.Store) int {
+			return serve(ctx, cfg, st, logger)
+		})
+	default:
+		logger.Error(usage)
 
 		return 2
 	}
+}
 
-	cfg, err := config.Load(os.LookupEnv)
+// withStore loads configuration, opens the store, and runs fn with both.
+func withStore(ctx context.Context, logger *slog.Logger, lookup func(string) (string, bool), fn func(config.Config, *store.Store) int) int {
+	cfg, err := config.Load(lookup)
 	if err != nil {
 		logger.Error("invalid configuration", "error", err)
 
 		return 1
 	}
+	st, err := store.Open(ctx, cfg.DataDir)
+	if err != nil {
+		logger.Error("open store", "error", err)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if err := app.Run(ctx, cfg.HTTPAddr, api.NewRouter(), logger); err != nil {
+		return 1
+	}
+	defer func() {
+		if err := st.Close(); err != nil {
+			logger.Error("close store", "error", err)
+		}
+	}()
+
+	return fn(cfg, st)
+}
+
+func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog.Logger) int {
+	checker := readiness.New(
+		readiness.Database(st),
+		readiness.Storage(cfg.DataDir, cfg.MinFreeBytes),
+		readiness.Executable("yt-dlp", cfg.Tools.YTDLP),
+		readiness.Executable("gallery-dl", cfg.Tools.GalleryDL),
+		readiness.Executable("ffmpeg", cfg.Tools.FFmpeg),
+		readiness.Executable("ffprobe", cfg.Tools.FFprobe),
+	)
+	if err := app.Run(ctx, cfg.HTTPAddr, api.NewRouter(checker, logger), logger); err != nil {
 		logger.Error("application stopped unexpectedly", "error", err)
 
 		return 1

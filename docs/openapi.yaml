@@ -26,3 +26,52 @@ paths:
                 additionalProperties: false
               example:
                 status: ok
+  /readyz:
+    get:
+      operationId: getReadiness
+      summary: Check service readiness
+      description: >-
+        Runs dependency checks for the database, the data directory and its free space,
+        and the configured media tools. The response never identifies the failing check
+        or discloses paths, versions, or error details.
+      security: []
+      responses:
+        "200":
+          description: Every dependency check passed.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+              example:
+                status: ready
+        "503":
+          description: At least one dependency check failed.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+              example:
+                status: not_ready
+components:
+  schemas:
+    Readiness:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+      additionalProperties: false

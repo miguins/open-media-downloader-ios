@@ -1,0 +1,44 @@
+info:
+  name: readyz
+  type: http
+  seq: 2
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/readyz"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("returns only the readiness status", function () {
+          expect(res.getBody()).to.deep.equal({ status: "ready" });
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers['content-type']
+      operator: contains
+      value: application/json
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+    - expression: res.body.status
+      operator: eq
+      value: ready
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: true
+
+docs: |-
+  # readyz
+
+  Returns `ready` when the database, data directory, free space, and media tools pass their checks, or `not_ready` with HTTP 503 otherwise. It does not identify the failing check or expose paths, versions, or error details.

@@ -259,3 +259,44 @@ func (failingListener) Close() error {
 func (failingListener) Addr() net.Addr {
 	return &net.TCPAddr{}
 }
+
+func TestRunStopsBackgroundTasksOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		result <- Run(ctx, "127.0.0.1:0", http.NotFoundHandler(), testLogger(), func(taskCtx context.Context) error {
+			close(started)
+			<-taskCtx.Done()
+			close(stopped)
+
+			return nil
+		})
+	}()
+
+	<-started
+	cancel()
+	requireResult(t, result, nil)
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("Run() returned before the background task stopped")
+	}
+}
+
+func TestRunStopsServerWhenBackgroundTaskFails(t *testing.T) {
+	sentinel := errors.New("worker failed")
+	result := make(chan error, 1)
+	go func() {
+		result <- Run(context.Background(), "127.0.0.1:0", http.NotFoundHandler(), testLogger(),
+			func(context.Context) error { return sentinel },
+			func(taskCtx context.Context) error {
+				<-taskCtx.Done()
+
+				return nil
+			})
+	}()
+
+	requireResult(t, result, sentinel)
+}

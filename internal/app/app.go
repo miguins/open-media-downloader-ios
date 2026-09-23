@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -19,11 +20,35 @@ const (
 	shutdownTimeout   = 10 * time.Second
 )
 
-// Run starts the HTTP server and blocks until it stops.
-func Run(ctx context.Context, address string, handler http.Handler, logger *slog.Logger) error {
-	listenConfig := &net.ListenConfig{}
+// Run starts the HTTP server and the background tasks and blocks until all of them stop.
+// Canceling ctx or a failing background task shuts everything down.
+func Run(ctx context.Context, address string, handler http.Handler, logger *slog.Logger, background ...func(context.Context) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	return runWithListener(ctx, address, handler, logger, listenConfig.Listen)
+	var tasks sync.WaitGroup
+	taskErrors := make(chan error, len(background))
+	for _, task := range background {
+		tasks.Go(func() {
+			if err := task(ctx); err != nil {
+				taskErrors <- err
+				cancel()
+			}
+		})
+	}
+
+	listenConfig := &net.ListenConfig{}
+	serveErr := runWithListener(ctx, address, handler, logger, listenConfig.Listen)
+	cancel()
+	tasks.Wait()
+	close(taskErrors)
+
+	errs := []error{serveErr}
+	for err := range taskErrors {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
 
 func runWithListener(

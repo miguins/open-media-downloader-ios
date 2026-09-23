@@ -174,7 +174,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 Jobs use a fake extractor, so no real media is downloaded yet, and there is no iOS Shortcut package.
 
-Phases 0 (project foundation), 1 (secure core), and 2 (job lifecycle) are complete. The next development effort is Phase 3, real extractors. See the ordered delivery status in the [Roadmap](docs/roadmap.md) and the planned system boundaries in [Architecture](docs/architecture.md).
+Phases 0 (project foundation), 1 (secure core), and 2 (job lifecycle) are complete. The next development effort is Phase 3, real extractors. See the ordered delivery status in the [Roadmap](docs/roadmap.md) and the current and planned system boundaries in [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

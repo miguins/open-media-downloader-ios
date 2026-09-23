@@ -10,6 +10,8 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 The next development effort is a Superpowers design and implementation plan for **Phase 3 — Real extractors**, beginning with the `yt-dlp` adapter behind the Phase 2 `Extractor` boundary and extractor egress control.
 
+The Phase 1 and Phase 2 documents under `docs/superpowers/records/` were consolidated at their handoffs and record delivered scope; they are not pre-implementation plans under the current Superpowers format. Phase 3 must follow the complete current workflow before implementation begins.
+
 ## Phase 0 — Project foundation
 
 **Status: Complete**
@@ -25,7 +27,7 @@ The next development effort is a Superpowers design and implementation plan for 
 
 ## Phase 1 — Secure core
 
-**Status: Complete** — [design](superpowers/specs/2026-09-22-phase-1-secure-core-design.md), [plan](superpowers/plans/2026-09-22-phase-1-secure-core.md)
+**Status: Complete** — [design](superpowers/specs/2026-09-22-phase-1-secure-core-design.md), [delivery record](superpowers/records/2026-09-22-phase-1-secure-core.md)
 
 - Complete application configuration for persistence, storage, resource limits, security, and extractor paths.
 - SQLite migrations and repositories.
@@ -38,7 +40,7 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 
 ## Phase 2 — Job lifecycle
 
-**Status: Complete** — [design](superpowers/specs/2026-09-23-phase-2-job-lifecycle-design.md), [plan](superpowers/plans/2026-09-23-phase-2-job-lifecycle.md)
+**Status: Complete** — [design](superpowers/specs/2026-09-23-phase-2-job-lifecycle-design.md), [delivery record](superpowers/records/2026-09-23-phase-2-job-lifecycle.md)
 
 - Create, poll, and cancel endpoints.
 - Persistent queue and single worker.
@@ -74,7 +76,7 @@ Phase 0 provides working baselines for several of these deliverables. Phase 4 co
 
 ## Delivery rules
 
-- Use Superpowers to create and approve the specification and implementation plan for each phase.
+- Use the current Superpowers workflow for every new phase: approve and commit the design specification, approve and commit a current-format implementation plan, and select the execution method before implementation begins.
 - Implement behavior with TDD and the coverage requirements in `AGENTS.md`.
 - Update this document in the same change whenever a phase changes status or order.
 - Do not create placeholder packages or speculative interfaces for later phases.

@@ -27,6 +27,8 @@ func defaultConfig() Config {
 		MinFreeBytes:     1 << 30,
 		JobRetention:     24 * time.Hour,
 		TokenTTL:         15 * time.Minute,
+		PublicURL:        "http://localhost:8080",
+		MaxQueuedJobs:    10,
 		Tools: Tools{
 			YTDLP:     "/opt/media-tools/bin/yt-dlp",
 			GalleryDL: "/opt/media-tools/bin/gallery-dl",
@@ -53,7 +55,7 @@ func TestLoadValidOverrides(t *testing.T) {
 		"OMDI_ALLOWED_PLATFORMS": "vimeo,youtube",
 		"OMDI_MAX_URL_LENGTH":    "256",
 		"OMDI_MAX_REQUEST_BYTES": "1048576",
-		"OMDI_JOB_TIMEOUT":       "2h",
+		"OMDI_JOB_TIMEOUT":       "30s",
 		"OMDI_MAX_JOB_BYTES":     "1048576",
 		"OMDI_MIN_FREE_BYTES":    "0",
 		"OMDI_JOB_RETENTION":     "5m",
@@ -62,6 +64,8 @@ func TestLoadValidOverrides(t *testing.T) {
 		"OMDI_GALLERYDL_PATH":    "/usr/bin/gallery-dl",
 		"OMDI_FFMPEG_PATH":       "/usr/bin/ffmpeg",
 		"OMDI_FFPROBE_PATH":      "/usr/bin/ffprobe",
+		"OMDI_PUBLIC_URL":        "https://omdi.example.com/base/",
+		"OMDI_MAX_QUEUED_JOBS":   "1000",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -73,11 +77,13 @@ func TestLoadValidOverrides(t *testing.T) {
 		AllowedPlatforms: []string{"vimeo", "youtube"},
 		MaxURLLength:     256,
 		MaxRequestBytes:  1048576,
-		JobTimeout:       2 * time.Hour,
+		JobTimeout:       30 * time.Second,
 		MaxJobBytes:      1048576,
 		MinFreeBytes:     0,
 		JobRetention:     5 * time.Minute,
 		TokenTTL:         5 * time.Minute,
+		PublicURL:        "https://omdi.example.com/base",
+		MaxQueuedJobs:    1000,
 		Tools: Tools{
 			YTDLP:     "/usr/bin/yt-dlp",
 			GalleryDL: "/usr/bin/gallery-dl",
@@ -143,6 +149,17 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		{name: "OMDI_GALLERYDL_PATH", value: ""},
 		{name: "OMDI_FFMPEG_PATH", value: "/opt//ffmpeg"},
 		{name: "OMDI_FFPROBE_PATH", value: "/opt/ffprobe/"},
+		{name: "OMDI_PUBLIC_URL", value: ""},
+		{name: "OMDI_PUBLIC_URL", value: "omdi.example.com"},
+		{name: "OMDI_PUBLIC_URL", value: "/relative"},
+		{name: "OMDI_PUBLIC_URL", value: "ftp://omdi.example.com"},
+		{name: "OMDI_PUBLIC_URL", value: "https://"},
+		{name: "OMDI_PUBLIC_URL", value: "https://user@omdi.example.com"},
+		{name: "OMDI_PUBLIC_URL", value: "https://omdi.example.com/?secret=1"},
+		{name: "OMDI_PUBLIC_URL", value: "https://omdi.example.com/#secret"},
+		{name: "OMDI_PUBLIC_URL", value: "https://omdi.example.com/%zz"},
+		{name: "OMDI_MAX_QUEUED_JOBS", value: "-5"},
+		{name: "OMDI_MAX_QUEUED_JOBS", value: "1001"},
 	}
 
 	for _, tt := range tests {
@@ -164,6 +181,17 @@ func TestLoadRejectsTokenTTLAboveRetention(t *testing.T) {
 		"OMDI_TOKEN_TTL":     "11m",
 	}))
 	if err == nil || !strings.Contains(err.Error(), "OMDI_TOKEN_TTL must not exceed OMDI_JOB_RETENTION") {
+		t.Fatalf("Load() error = %v", err)
+	}
+}
+
+func TestLoadRejectsRetentionNotAboveTimeout(t *testing.T) {
+	_, err := Load(lookupFrom(map[string]string{
+		"OMDI_JOB_TIMEOUT":   "10m",
+		"OMDI_JOB_RETENTION": "10m",
+		"OMDI_TOKEN_TTL":     "5m",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "OMDI_JOB_RETENTION must exceed OMDI_JOB_TIMEOUT") {
 		t.Fatalf("Load() error = %v", err)
 	}
 }

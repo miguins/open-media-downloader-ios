@@ -28,6 +28,8 @@ services:
       OMDI_GALLERYDL_PATH:
       OMDI_FFMPEG_PATH:
       OMDI_FFPROBE_PATH:
+      OMDI_PUBLIC_URL:
+      OMDI_MAX_QUEUED_JOBS:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

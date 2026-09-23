@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"net"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -38,6 +39,8 @@ type Config struct {
 	MinFreeBytes     int64
 	JobRetention     time.Duration
 	TokenTTL         time.Duration
+	PublicURL        string
+	MaxQueuedJobs    int
 	Tools            Tools
 }
 
@@ -62,6 +65,8 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		MinFreeBytes:     l.integer("OMDI_MIN_FREE_BYTES", gibibyte, 0, tebibyte),
 		JobRetention:     l.duration("OMDI_JOB_RETENTION", 24*time.Hour, 5*time.Minute, 720*time.Hour),
 		TokenTTL:         l.duration("OMDI_TOKEN_TTL", 15*time.Minute, time.Minute, 24*time.Hour),
+		PublicURL:        l.publicURL("OMDI_PUBLIC_URL", "http://localhost:8080"),
+		MaxQueuedJobs:    int(l.integer("OMDI_MAX_QUEUED_JOBS", 10, 1, 1000)),
 		Tools: Tools{
 			YTDLP:     l.path("OMDI_YTDLP_PATH", "/opt/media-tools/bin/yt-dlp"),
 			GalleryDL: l.path("OMDI_GALLERYDL_PATH", "/opt/media-tools/bin/gallery-dl"),
@@ -71,6 +76,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 	if cfg.TokenTTL > 0 && cfg.JobRetention > 0 && cfg.TokenTTL > cfg.JobRetention {
 		l.fail("OMDI_TOKEN_TTL must not exceed OMDI_JOB_RETENTION")
+	}
+	if cfg.JobTimeout > 0 && cfg.JobRetention > 0 && cfg.JobRetention <= cfg.JobTimeout {
+		l.fail("OMDI_JOB_RETENTION must exceed OMDI_JOB_TIMEOUT")
 	}
 	if err := errors.Join(l.errs...); err != nil {
 		return Config{}, err
@@ -133,6 +141,22 @@ func (l *loader) path(name, fallback string) string {
 	}
 
 	return value
+}
+
+func (l *loader) publicURL(name, fallback string) string {
+	value, ok := l.value(name)
+	if !ok {
+		return fallback
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.Opaque != "" {
+		l.fail(name + " must be an absolute http or https URL without user information, query, or fragment")
+
+		return ""
+	}
+
+	return strings.TrimSuffix(value, "/")
 }
 
 func (l *loader) platforms(name string) []string {

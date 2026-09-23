@@ -5,7 +5,7 @@ profile=${1:?usage: check-coverage.sh COVERAGE_PROFILE}
 minimum=${COVERAGE_MIN:-90}
 module=github.com/miguins/open-media-downloader-ios
 # Security-critical packages must be fully covered.
-full_packages=${COVERAGE_FULL_PACKAGES:-internal/auth internal/urlpolicy}
+full_packages=${COVERAGE_FULL_PACKAGES:-internal/auth internal/storage internal/urlpolicy}
 coverage=$(go tool cover -func="$profile" | awk '$1 == "total:" { gsub(/%/, "", $3); print $3 }')
 
 if [ -z "$coverage" ]; then

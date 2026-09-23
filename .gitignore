@@ -9,6 +9,7 @@ collection/.env.*
 # Runtime data and downloaded media
 data/
 downloads/
+!/collection/downloads/
 *.sqlite
 *.sqlite3
 *.sqlite3-*

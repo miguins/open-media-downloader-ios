@@ -16,7 +16,7 @@ import (
 )
 
 func newTestRouter(logs io.Writer, checks ...readiness.Check) http.Handler {
-	return NewRouter(readiness.New(checks...), slog.New(slog.NewJSONHandler(logs, nil)))
+	return NewRouter(Dependencies{Readiness: readiness.New(checks...), Logger: slog.New(slog.NewJSONHandler(logs, nil))})
 }
 
 func TestHealthz(t *testing.T) {

@@ -1,0 +1,61 @@
+info:
+  name: get-job
+  type: http
+  seq: 2
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v1/jobs/{{jobId}}"
+  auth:
+    type: bearer
+    token: "{{apiKey}}"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        // The worker is notified on creation; give it a moment before each poll.
+        await bru.sleep(500);
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        const attempts = (bru.getVar("pollAttempts") || 0) + 1;
+        bru.setVar("pollAttempts", attempts);
+        if ((body.status === "queued" || body.status === "running") && attempts < 20) {
+          bru.setNextRequest("get-job");
+        } else if (body.items && body.items.length > 0) {
+          bru.setVar("downloadToken", body.items[0].download_url.split("/").pop());
+        }
+    - type: tests
+      code: |-
+        test("returns a download link for the succeeded job", function () {
+          const body = res.getBody();
+          if (body.status === "queued" || body.status === "running") {
+            return;
+          }
+          expect(body.status).to.equal("succeeded");
+          expect(body.items).to.have.lengthOf(1);
+          expect(body.items[0].media_type).to.equal("video/mp4");
+          expect(body.items[0].download_url).to.match(/\/v1\/downloads\/[A-Za-z0-9_-]{43}$/);
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: |-
+  # get-job
+
+  Returns a job owned by the API key. Each call for a succeeded job issues fresh download links and invalidates earlier ones. The collection polls until the job finishes.

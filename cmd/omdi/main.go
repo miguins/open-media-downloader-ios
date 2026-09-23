@@ -11,9 +11,15 @@ import (
 
 	"github.com/miguins/open-media-downloader-ios/internal/api"
 	"github.com/miguins/open-media-downloader-ios/internal/app"
+	"github.com/miguins/open-media-downloader-ios/internal/auth"
+	"github.com/miguins/open-media-downloader-ios/internal/cleanup"
 	"github.com/miguins/open-media-downloader-ios/internal/config"
+	"github.com/miguins/open-media-downloader-ios/internal/extractor"
 	"github.com/miguins/open-media-downloader-ios/internal/readiness"
+	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
+	"github.com/miguins/open-media-downloader-ios/internal/urlpolicy"
+	"github.com/miguins/open-media-downloader-ios/internal/worker"
 )
 
 const usage = "usage: omdi serve | omdi keys create --name <name> | omdi keys list | omdi keys revoke <id>"
@@ -74,6 +80,29 @@ func withStore(ctx context.Context, logger *slog.Logger, lookup func(string) (st
 }
 
 func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog.Logger) int {
+	layout, err := storage.New(cfg.DataDir)
+	if err != nil {
+		logger.Error("prepare storage", "error", err)
+
+		return 1
+	}
+	policy, err := urlpolicy.New(cfg.AllowedPlatforms, cfg.MaxURLLength)
+	if err != nil {
+		logger.Error("configure URL policy", "error", err)
+
+		return 1
+	}
+	cleaner := cleanup.New(st, layout, logger)
+	if err := cleaner.Recover(ctx); err != nil {
+		logger.Error("recover state", "error", err)
+
+		return 1
+	}
+	jobWorker := worker.New(st, layout, extractor.Fake{}, worker.Settings{
+		JobTimeout:   cfg.JobTimeout,
+		MaxJobBytes:  cfg.MaxJobBytes,
+		MinFreeBytes: cfg.MinFreeBytes,
+	}, logger)
 	checker := readiness.New(
 		readiness.Database(st),
 		readiness.Storage(cfg.DataDir, cfg.MinFreeBytes),
@@ -82,7 +111,23 @@ func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog
 		readiness.Executable("ffmpeg", cfg.Tools.FFmpeg),
 		readiness.Executable("ffprobe", cfg.Tools.FFprobe),
 	)
-	if err := app.Run(ctx, cfg.HTTPAddr, api.NewRouter(checker, logger), logger); err != nil {
+	router := api.NewRouter(api.Dependencies{
+		Readiness:     checker,
+		Authenticator: auth.NewAuthenticator(st, logger),
+		Store:         st,
+		Layout:        layout,
+		Policy:        policy,
+		Notify:        jobWorker.Notify,
+		Settings: api.Settings{
+			PublicURL:       cfg.PublicURL,
+			MaxRequestBytes: cfg.MaxRequestBytes,
+			MaxQueuedJobs:   cfg.MaxQueuedJobs,
+			JobRetention:    cfg.JobRetention,
+			TokenTTL:        cfg.TokenTTL,
+		},
+		Logger: logger,
+	})
+	if err := app.Run(ctx, cfg.HTTPAddr, router, logger, jobWorker.Run, cleaner.Run); err != nil {
 		logger.Error("application stopped unexpectedly", "error", err)
 
 		return 1

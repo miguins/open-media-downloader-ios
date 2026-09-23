@@ -87,6 +87,8 @@ services:
       - local
       - --env-var
       - baseUrl=http://app:8080
+    environment:
+      OMDI_API_KEY:
     volumes:
       - ./collection:/bruno:ro
     depends_on:

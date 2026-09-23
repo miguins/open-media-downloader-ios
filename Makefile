@@ -67,8 +67,20 @@ key-revoke:
 	@test -n "$$OMDI_KEY_ID" || { echo "usage: make key-revoke ID=<id>" >&2; exit 2; }
 	@$(APP_RUN) -e OMDI_KEY_ID app sh -ec '$(APP_BUILD); exec $(APP_BINARY) keys revoke "$$OMDI_KEY_ID"'
 
+# Runs the collection with a temporary API key that is revoked afterwards.
 collection-test:
-	@set -eu; trap '$(COMPOSE) down --remove-orphans' EXIT INT TERM; $(COMPOSE) up --build --detach --wait app; $(COMPOSE) run --rm bruno
+	@set -eu; \
+	OMDI_API_KEY=; export OMDI_API_KEY; \
+	cleanup() { \
+		if [ -n "$$OMDI_API_KEY" ]; then \
+			$(COMPOSE) exec -T app $(APP_BINARY) keys revoke "$$(echo "$$OMDI_API_KEY" | cut -d_ -f2)" >/dev/null 2>&1 || true; \
+		fi; \
+		$(COMPOSE) down --remove-orphans; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	$(COMPOSE) up --build --detach --wait app; \
+	OMDI_API_KEY=$$($(COMPOSE) exec -T app $(APP_BINARY) keys create --name "collection-test-$$(date +%s)"); \
+	$(COMPOSE) run --rm bruno
 
 ci:
 	$(MAKE) fmt-check

@@ -2,3 +2,5 @@ name: local
 variables:
   - name: baseUrl
     value: http://localhost:8080
+  - name: apiKey
+    value: "{{process.env.OMDI_API_KEY}}"

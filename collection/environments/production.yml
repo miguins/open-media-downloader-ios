@@ -2,3 +2,5 @@ name: production
 variables:
   - name: baseUrl
     value: "{{process.env.OMDI_BASE_URL}}"
+  - name: apiKey
+    value: "{{process.env.OMDI_API_KEY}}"

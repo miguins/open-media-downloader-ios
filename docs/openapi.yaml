@@ -1,7 +1,7 @@
 openapi: 3.2.1
 info:
   title: OpenMediaDownloaderIOS API
-  version: 0.1.0
+  version: 0.2.0
 servers:
   - url: http://localhost:8080
 paths:
@@ -62,8 +62,354 @@ paths:
                 $ref: "#/components/schemas/Readiness"
               example:
                 status: not_ready
+  /v1/jobs:
+    post:
+      operationId: createJob
+      summary: Queue a download job
+      description: >-
+        Normalizes the URL and checks it against the allowed platforms before queuing. Each
+        API key may have a limited number of queued or running jobs.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Public HTTPS media URL on an allowed platform.
+              additionalProperties: false
+            example:
+              url: https://vimeo.com/123
+      responses:
+        "202":
+          description: The job was queued.
+          headers:
+            Location:
+              description: Path of the created job.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnsupportedURL"
+        "429":
+          $ref: "#/components/responses/TooManyJobs"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /v1/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[a-z2-7]{26}$"
+    get:
+      operationId: getJob
+      summary: Get a job
+      description: >-
+        Returns the job. For succeeded jobs, every call issues fresh download links and
+        invalidates links returned earlier for the same items.
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: The job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: cancelJob
+      summary: Cancel a job
+      description: >-
+        Cancels a queued or running job. Canceling a canceled job succeeds without change;
+        succeeded and failed jobs cannot be canceled.
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: The canceled job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /v1/downloads/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        description: Opaque, short-lived download token from a job's item.
+        schema:
+          type: string
+    get:
+      operationId: downloadItem
+      summary: Download a media item
+      description: >-
+        Streams the item granted by the token. The token is the only credential. Range
+        requests are supported. Malformed, unknown, and expired tokens return the same 404.
+      security: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Media"
+        "206":
+          $ref: "#/components/responses/Media"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      operationId: headItem
+      summary: Inspect a media item
+      security: []
+      responses:
+        "200":
+          description: Headers of the media item without a body.
+        "404":
+          description: The token is malformed, unknown, or expired.
 components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: "API key created with `omdi keys create`, sent as `Authorization: Bearer omdi_<id>_<secret>`."
+  responses:
+    InvalidRequest:
+      description: The body is not a single JSON object with a string `url` and no other fields.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: invalid_request
+    Unauthorized:
+      description: The API key is missing, malformed, unknown, or revoked.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            const: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: unauthorized
+    NotFound:
+      description: The resource does not exist or belongs to another API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: not_found
+    Conflict:
+      description: The job already succeeded or failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: conflict
+    RequestTooLarge:
+      description: The body exceeds the configured request size limit.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: request_too_large
+    UnsupportedMediaType:
+      description: The request content type is not `application/json`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: unsupported_media_type
+    UnsupportedURL:
+      description: The URL is not a public HTTPS URL on an allowed platform.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: unsupported_url
+    TooManyJobs:
+      description: The API key already has the maximum number of queued or running jobs.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: too_many_jobs
+    Internal:
+      description: An internal error occurred. No details are disclosed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: internal
+    Media:
+      description: >-
+        The media file, served as an attachment with `X-Content-Type-Options: nosniff`,
+        `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`.
+      headers:
+        Content-Disposition:
+          schema:
+            type: string
+          example: attachment; filename=omdi-abcdefgh-1.mp4
+      content:
+        video/*:
+          schema:
+            type: string
+            format: binary
+        image/*:
+          schema:
+            type: string
+            format: binary
+        audio/*:
+          schema:
+            type: string
+            format: binary
   schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - unauthorized
+            - not_found
+            - conflict
+            - request_too_large
+            - unsupported_media_type
+            - unsupported_url
+            - too_many_jobs
+            - internal
+      additionalProperties: false
+    Job:
+      type: object
+      required:
+        - id
+        - status
+        - url
+        - platform
+        - error
+        - created_at
+        - updated_at
+        - expires_at
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - succeeded
+            - failed
+            - canceled
+        url:
+          type: string
+          description: The normalized source URL.
+        platform:
+          type: string
+          enum:
+            - youtube
+            - instagram
+            - tiktok
+            - x
+            - reddit
+            - vimeo
+        error:
+          type:
+            - string
+            - "null"
+          enum:
+            - unsupported_url
+            - extraction_failed
+            - too_large
+            - timeout
+            - internal
+            - null
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: When the job and its files are removed.
+        items:
+          type: array
+          description: Present only for succeeded jobs.
+          items:
+            $ref: "#/components/schemas/Item"
+      additionalProperties: false
+    Item:
+      type: object
+      required:
+        - id
+        - file_name
+        - media_type
+        - size_bytes
+        - download_url
+        - download_expires_at
+      properties:
+        id:
+          type: string
+        file_name:
+          type: string
+          description: Server-generated download file name.
+        media_type:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 1
+        download_url:
+          type: string
+          format: uri
+          description: Absolute link built from OMDI_PUBLIC_URL; replaced on every poll.
+        download_expires_at:
+          type: string
+          format: date-time
+      additionalProperties: false
     Readiness:
       type: object
       required:

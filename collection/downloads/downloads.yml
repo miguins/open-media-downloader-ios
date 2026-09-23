@@ -1,0 +1,41 @@
+info:
+  name: downloads
+  type: http
+  seq: 1
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v1/downloads/{{downloadToken}}"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers['content-type']
+      operator: eq
+      value: video/mp4
+    - expression: res.headers['content-disposition']
+      operator: contains
+      value: attachment
+    - expression: res.headers['x-content-type-options']
+      operator: eq
+      value: nosniff
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: |-
+  # downloads
+
+  Streams a media item. The short-lived token in the path is the only credential, so no API key is sent.

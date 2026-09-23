@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/miguins/open-media-downloader-ios/internal/auth"
+	"github.com/miguins/open-media-downloader-ios/internal/job"
+	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
 
 type cli struct {
@@ -157,6 +160,78 @@ func TestKeysLifecycle(t *testing.T) {
 	for _, id := range []string{"invalid", strings.Repeat("a", 26)} {
 		if code, _, stderr := c.run(ctx, "keys", "revoke", id); code != 1 || !strings.Contains(stderr, "API key not found") {
 			t.Fatalf("keys revoke %s = %d, %s", id, code, stderr)
+		}
+	}
+}
+
+func TestJobsCommands(t *testing.T) {
+	c := newCLI(t)
+	ctx := context.Background()
+	_, key, _ := c.run(ctx, "keys", "create", "--name", "phone")
+	ownerID, _, _ := auth.Parse(strings.TrimSpace(key))
+
+	st, err := store.Open(ctx, c.env["OMDI_DATA_DIR"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	queued := job.New(ownerID, "https://vimeo.com/secret-path", "vimeo", now, time.Hour)
+	running := job.New(ownerID, "https://vimeo.com/2", "vimeo", now.Add(time.Second), time.Hour)
+	for _, j := range []job.Job{queued, running} {
+		if err := st.CreateJob(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.ClaimNextJob(ctx, now); err != nil { // claims the older, queued job
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	runningID, queuedID := queued.ID, running.ID
+	jobDir := filepath.Join(c.env["OMDI_DATA_DIR"], "jobs", queuedID)
+	if err := os.MkdirAll(jobDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	code, list, _ := c.run(ctx, "jobs", "list")
+	if code != 0 || !strings.Contains(list, runningID) || !strings.Contains(list, queuedID) || strings.Contains(list, "secret-path") {
+		t.Fatalf("jobs list = %d:\n%s", code, list)
+	}
+	if code, list, _ = c.run(ctx, "jobs", "list", "--status", "running", "--owner", ownerID); code != 0 || !strings.Contains(list, runningID) || strings.Contains(list, queuedID) {
+		t.Fatalf("filtered jobs list = %d:\n%s", code, list)
+	}
+
+	if code, _, stderr := c.run(ctx, "jobs", "delete", runningID); code != 1 || !strings.Contains(stderr, "job is running") {
+		t.Fatalf("jobs delete running = %d, %s", code, stderr)
+	}
+	if code, _, stderr := c.run(ctx, "jobs", "delete", queuedID); code != 0 {
+		t.Fatalf("jobs delete = %d, %s", code, stderr)
+	}
+	if _, err := os.Lstat(jobDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("jobs delete left files")
+	}
+	for _, target := range []string{queuedID, "invalid"} {
+		if code, _, stderr := c.run(ctx, "jobs", "delete", target); code != 1 || !strings.Contains(stderr, "job not found") {
+			t.Fatalf("jobs delete %s = %d, %s", target, code, stderr)
+		}
+	}
+
+	if code, out, stderr := c.run(ctx, "jobs", "purge", "--yes", "--owner", ownerID); code != 0 || strings.TrimSpace(out) != "purged 1 jobs" {
+		t.Fatalf("jobs purge = %d, %q, %s", code, out, stderr)
+	}
+	if code, out, _ := c.run(ctx, "jobs", "purge", "--yes"); code != 0 || strings.TrimSpace(out) != "purged 0 jobs" {
+		t.Fatalf("empty jobs purge = %d, %q", code, out)
+	}
+}
+
+func TestJobsUsageErrors(t *testing.T) {
+	c := newCLI(t)
+	for _, args := range [][]string{
+		{"jobs"}, {"jobs", "unknown"}, {"jobs", "list", "extra"}, {"jobs", "list", "--status", "paused"},
+		{"jobs", "list", "--owner", "bad"}, {"jobs", "delete"}, {"jobs", "delete", "a", "b"},
+		{"jobs", "purge"}, {"jobs", "purge", "--yes", "--owner", "bad"}, {"jobs", "purge", "--yes", "extra"},
+	} {
+		if code, stdout, _ := c.run(context.Background(), args...); code != 2 || stdout != "" {
+			t.Fatalf("run(%q) = %d, %q; want 2", args, code, stdout)
 		}
 	}
 }

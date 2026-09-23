@@ -5,7 +5,7 @@ APP_RUN := $(COMPOSE) run --rm --no-deps -T
 APP_BUILD := mkdir -p "$$GOTMPDIR"; go build -trimpath -o $(APP_BINARY) ./cmd/omdi
 TRIVY_IMAGE := aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
-.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke compose-up compose-down key-create key-list key-revoke collection-test ci
+.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke compose-up compose-down key-create key-list key-revoke job-list job-delete job-purge collection-test ci
 
 bootstrap:
 	command -v docker >/dev/null
@@ -66,6 +66,19 @@ key-revoke: export OMDI_KEY_ID := $(ID)
 key-revoke:
 	@test -n "$$OMDI_KEY_ID" || { echo "usage: make key-revoke ID=<id>" >&2; exit 2; }
 	@$(APP_RUN) -e OMDI_KEY_ID app sh -ec '$(APP_BUILD); exec $(APP_BINARY) keys revoke "$$OMDI_KEY_ID"'
+
+job-list:
+	@$(APP_RUN) app sh -ec '$(APP_BUILD); exec $(APP_BINARY) jobs list'
+
+job-delete: export OMDI_JOB_ID := $(ID)
+job-delete:
+	@test -n "$$OMDI_JOB_ID" || { echo "usage: make job-delete ID=<id>" >&2; exit 2; }
+	@$(APP_RUN) -e OMDI_JOB_ID app sh -ec '$(APP_BUILD); exec $(APP_BINARY) jobs delete "$$OMDI_JOB_ID"'
+
+# Purges every job, or only OWNER's jobs, including running ones.
+job-purge: export OMDI_JOB_OWNER := $(OWNER)
+job-purge:
+	@$(APP_RUN) -e OMDI_JOB_OWNER app sh -ec '$(APP_BUILD); if [ -n "$$OMDI_JOB_OWNER" ]; then exec $(APP_BINARY) jobs purge --yes --owner "$$OMDI_JOB_OWNER"; fi; exec $(APP_BINARY) jobs purge --yes'
 
 # Runs the collection with a temporary API key that is revoked afterwards.
 collection-test:

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,8 +23,7 @@ type keysCommand struct {
 func parseKeysCommand(args []string) (keysCommand, bool) {
 	switch args[0] {
 	case "create":
-		flags := flag.NewFlagSet("create", flag.ContinueOnError)
-		flags.SetOutput(io.Discard)
+		flags := newFlagSet("create")
 		name := flags.String("name", "", "key name")
 		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || !auth.ValidKeyName(*name) {
 			return keysCommand{}, false

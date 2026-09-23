@@ -65,7 +65,15 @@ func (s *Store) UpdateJobStatus(ctx context.Context, j job.Job, from job.Status)
 
 // CreateItem stores a media item. It returns ErrConflict when the job already has an item at the same position.
 func (s *Store) CreateItem(ctx context.Context, item job.Item) error {
-	_, err := s.db.ExecContext(ctx,
+	return insertItem(ctx, s.db, item)
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func insertItem(ctx context.Context, db execer, item job.Item) error {
+	_, err := db.ExecContext(ctx,
 		"INSERT INTO items (id, job_id, position, file_name, media_type, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		item.ID, item.JobID, item.Position, item.FileName, item.MediaType, item.SizeBytes, toMillis(item.CreatedAt))
 	if isUniqueViolation(err) {

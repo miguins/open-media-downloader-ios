@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-The current application is the completed Phase 0 foundation release. It provides the `omdi serve` command, validated HTTP address configuration, signal-aware server lifecycle, `GET /healthz`, container packaging, API contracts, and repeatable development checks. Phase 1 has not started. The application does not download media, persist data, authenticate callers, or process jobs.
+The current application is the completed Phase 1 secure core. It provides `omdi serve` and `omdi keys create|list|revoke`, the complete validated configuration contract, SQLite persistence with embedded migrations, hashed API keys with constant-time bearer authentication middleware, job/item/download-token domain models and owner-scoped repositories, URL normalization with a platform allowlist and public-address SSRF checks, unauthenticated `GET /healthz`, and `GET /readyz` backed by database, storage, and media-tool checks. Phase 2 has not started: no HTTP endpoint accepts jobs or requires authentication yet, and the application does not download media, run extractors, or issue download tokens.
 
 Implementation order, delivery status, and the next milestone are maintained in the [Roadmap](roadmap.md). Planned boundaries in this document do not override that order.
 

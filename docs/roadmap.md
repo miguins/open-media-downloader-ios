@@ -6,9 +6,9 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 0 — Project foundation is complete. Phase 1 has not started.**
+**Phase 1 — Secure core is complete. Phase 2 has not started.**
 
-The next development effort is a Superpowers design and implementation plan for **Phase 1 — Secure core**, beginning with the complete configuration contract required by persistence, authentication, URL security, and readiness checks.
+The next development effort is a Superpowers design and implementation plan for **Phase 2 — Job lifecycle**, beginning with the create, poll, and cancel endpoints that mount the Phase 1 authentication middleware.
 
 ## Phase 0 — Project foundation
 
@@ -25,7 +25,7 @@ The next development effort is a Superpowers design and implementation plan for 
 
 ## Phase 1 — Secure core
 
-**Status: Planned — next**
+**Status: Complete** — [design](superpowers/specs/2026-09-22-phase-1-secure-core-design.md), [plan](superpowers/plans/2026-09-22-phase-1-secure-core.md)
 
 - Complete application configuration for persistence, storage, resource limits, security, and extractor paths.
 - SQLite migrations and repositories.
@@ -38,7 +38,7 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 
 ## Phase 2 — Job lifecycle
 
-**Status: Planned**
+**Status: Planned — next**
 
 - Create, poll, and cancel endpoints.
 - Persistent queue and single worker.

@@ -34,7 +34,8 @@ services:
       OMDI_MAX_QUEUED_JOBS:
       OMDI_MAX_JOB_ITEMS:
     ports:
-      - "127.0.0.1:8080:8080"
+      # Loopback by default; set OMDI_PUBLISH_HOST=0.0.0.0 to test from the local network.
+      - "${OMDI_PUBLISH_HOST:-127.0.0.1}:8080:8080"
     volumes:
       - ./cmd:/workspace/cmd:ro
       - ./internal:/workspace/internal:ro

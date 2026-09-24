@@ -44,6 +44,8 @@ make compose-down
 
 The project-root `.env` configures local Compose development.
 
+Compose publishes the API on `127.0.0.1:8080` only. To test from another device on a trusted local network, such as an iPhone, set `OMDI_PUBLISH_HOST=0.0.0.0` and point `OMDI_PUBLIC_URL` at an address that device can reach, for example `http://192.168.1.10:8080`, so returned `download_url` links work there. Traffic is plain HTTP, so API keys and download tokens cross the network unencrypted. Never publish this port to the internet.
+
 ## Configuration
 
 Unset variables use their defaults. A variable that is set but empty, surrounded by whitespace, or invalid stops startup; errors name the variable but never echo its value.

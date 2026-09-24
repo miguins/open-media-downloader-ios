@@ -579,6 +579,97 @@ func TestProxyHTTPAccountsSerializedResponse(t *testing.T) {
 	}
 }
 
+func rawProxyResponse(t *testing.T, s *ProxySession, request string) []byte {
+	t.Helper()
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp4", strings.TrimPrefix(s.URL(), "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	if _, err := io.WriteString(conn, request); err != nil {
+		t.Fatal(err)
+	}
+	wire, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wire
+}
+
+func rawResponseDialer(response string) Dialer {
+	return proxyDialFunc(func(context.Context, string, string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		go func() {
+			defer func() { _ = remote.Close() }()
+			req, err := http.ReadRequest(bufio.NewReader(remote))
+			if err != nil {
+				return
+			}
+			_, err = io.Copy(io.Discard, req.Body)
+			_ = req.Body.Close()
+			if err != nil {
+				return
+			}
+			_, _ = io.WriteString(remote, response)
+		}()
+		return local, nil
+	})
+}
+
+func TestProxyHTTPContinueWireAccounting(t *testing.T) {
+	const request = "POST http://target.example/path HTTP/1.1\r\nHost: target.example\r\nContent-Length: 4\r\nExpect: 100-continue\r\n\r\ndata"
+	const want = "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 4\r\n\r\nbody"
+	for _, limit := range []int64{86, 85, 24} {
+		t.Run(strconv.FormatInt(limit, 10), func(t *testing.T) {
+			p := startProxy(t, publicProxyResolver(), rawResponseDialer("HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nbody"))
+			s := beginProxy(t, p, 1)
+			if err := s.charge(1048577 - limit); err != nil {
+				t.Fatal(err)
+			}
+			wire := rawProxyResponse(t, s, request)
+			s.mu.Lock()
+			charged := limit - s.remaining
+			s.mu.Unlock()
+			if int64(len(wire)) > limit || charged != int64(len(wire)) {
+				t.Fatalf("limit %d: emitted %d bytes, charged %d: %q", limit, len(wire), charged, wire)
+			}
+			if limit == 86 && (string(wire) != want || s.Err() != nil) {
+				t.Fatalf("exact-limit response = %q, %v", wire, s.Err())
+			}
+			if limit < 86 && !errors.Is(s.Err(), ErrEgressTooLarge) {
+				t.Fatalf("over-budget response did not fail: %v", s.Err())
+			}
+		})
+	}
+}
+
+func TestProxyHTTPNotModifiedWireAccounting(t *testing.T) {
+	const want = "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n"
+	for _, limit := range []int64{100, 48, 47} {
+		t.Run(strconv.FormatInt(limit, 10), func(t *testing.T) {
+			p := startProxy(t, publicProxyResolver(), rawResponseDialer("HTTP/1.1 304 Not Modified\r\nContent-Type: text/plain\r\n\r\n"))
+			s := beginProxy(t, p, 1)
+			if err := s.charge(1048577 - limit); err != nil {
+				t.Fatal(err)
+			}
+			wire := rawProxyResponse(t, s, "GET http://target.example/path HTTP/1.1\r\nHost: target.example\r\n\r\n")
+			s.mu.Lock()
+			charged := limit - s.remaining
+			s.mu.Unlock()
+			if charged != int64(len(wire)) {
+				t.Fatalf("emitted %d bytes, charged %d: %q", len(wire), charged, wire)
+			}
+			if limit >= 48 && (string(wire) != want || s.Err() != nil) {
+				t.Fatalf("fitting response rejected: %q, %v", wire, s.Err())
+			}
+			if limit < 48 && (len(wire) != 0 || !errors.Is(s.Err(), ErrEgressTooLarge)) {
+				t.Fatalf("oversize headers = %q, %v", wire, s.Err())
+			}
+		})
+	}
+}
+
 func TestProxyHTTPRejectsProtocolUpgrade(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusSwitchingProtocols) }))
 	defer upstream.Close()
@@ -618,15 +709,10 @@ func TestProxyHeaderBudgetAbortsBeforeResponse(t *testing.T) {
 	if _, err := (&sessionWriter{session: s, writer: io.Discard}).Write(make([]byte, 1048577)); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if got, ok := recover().(error); !ok || !errors.Is(got, http.ErrAbortHandler) {
-			t.Errorf("exhausted header did not abort response: %v", got)
-		}
-		if !errors.Is(s.Err(), ErrEgressTooLarge) {
-			t.Errorf("header overflow = %v", s.Err())
-		}
-	}()
-	p.serveHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://target.example/path", nil))
+	wire := rawProxyResponse(t, s, "GET http://target.example/path HTTP/1.1\r\nHost: target.example\r\n\r\n")
+	if len(wire) != 0 || !errors.Is(s.Err(), ErrEgressTooLarge) {
+		t.Fatalf("exhausted header did not abort response: %q, %v", wire, s.Err())
+	}
 }
 
 func TestProxyListenerFailureIsPrivate(t *testing.T) {

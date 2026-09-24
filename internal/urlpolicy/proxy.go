@@ -1,16 +1,13 @@
 package urlpolicy
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -48,7 +45,7 @@ func newProxy(resolver Resolver, dialer Dialer, listen func(context.Context, str
 	if err != nil {
 		return nil, errors.New("egress proxy listener unavailable")
 	}
-	p := &Proxy{listener: listener, resolver: resolver, dialer: dialer}
+	p := &Proxy{listener: proxyListener{Listener: listener}, resolver: resolver, dialer: dialer}
 	p.server = &http.Server{
 		Handler:           http.HandlerFunc(p.serveHTTP),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -176,6 +173,40 @@ func (s *ProxySession) track(conn net.Conn) bool {
 
 type proxyConnKey struct{}
 
+// Count below net/http so automatic informational responses, header suppression,
+// and response framing all pass through the same budget before reaching the wire.
+type proxyListener struct{ net.Listener }
+
+func (l proxyListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &proxyResponseConn{Conn: conn}, nil
+}
+
+type proxyResponseConn struct {
+	net.Conn
+	mu      sync.Mutex
+	session *ProxySession
+}
+
+func (c *proxyResponseConn) setSession(s *ProxySession) {
+	c.mu.Lock()
+	c.session = s
+	c.mu.Unlock()
+}
+
+func (c *proxyResponseConn) Write(data []byte) (int, error) {
+	c.mu.Lock()
+	s := c.session
+	c.mu.Unlock()
+	if s == nil {
+		return c.Conn.Write(data)
+	}
+	return (&sessionWriter{session: s, writer: c.Conn}).Write(data)
+}
+
 func (s *ProxySession) untrack(conn net.Conn) {
 	s.mu.Lock()
 	delete(s.conns, conn)
@@ -183,6 +214,8 @@ func (s *ProxySession) untrack(conn net.Conn) {
 }
 
 func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	// Each HTTP connection belongs to one request/session, including error replies.
+	w.Header().Set("Connection", "close")
 	p.mu.Lock()
 	s := p.active
 	p.mu.Unlock()
@@ -195,6 +228,9 @@ func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	stop := context.AfterFunc(s.ctx, cancel)
 	defer stop()
 	if conn, ok := r.Context().Value(proxyConnKey{}).(net.Conn); ok {
+		if responseConn, ok := conn.(*proxyResponseConn); ok {
+			responseConn.setSession(s)
+		}
 		if !s.track(conn) {
 			return
 		}
@@ -308,7 +344,7 @@ func (p *Proxy) forwardHTTP(w http.ResponseWriter, r *http.Request, s *ProxySess
 	for key, values := range resp.Header {
 		w.Header()[key] = values
 	}
-	// Suppress automatic header additions so accounting matches serialization.
+	// Preserve omitted upstream metadata instead of adding proxy metadata.
 	if _, ok := w.Header()["Date"]; !ok {
 		w.Header()["Date"] = nil
 	}
@@ -316,24 +352,15 @@ func (p *Proxy) forwardHTTP(w http.ResponseWriter, r *http.Request, s *ProxySess
 		w.Header()["Content-Type"] = nil
 	}
 	w.Header().Set("Connection", "close")
-	var header bytes.Buffer
-	status := http.StatusText(resp.StatusCode)
-	if status == "" {
-		status = "status code " + strconv.Itoa(resp.StatusCode)
-	}
-	_, _ = fmt.Fprintf(&header, "HTTP/1.1 %d %s\r\n", resp.StatusCode, status)
-	_ = w.Header().Write(&header)
-	header.WriteString("\r\n")
-	if _, err := (&sessionWriter{session: s, writer: io.Discard}).Write(header.Bytes()); err != nil {
-		panic(http.ErrAbortHandler)
-	}
 	// A close-delimited body avoids implicit chunk framing or content-length additions.
 	if w.Header().Get("Content-Length") == "" {
 		w.Header().Set("Transfer-Encoding", "identity")
 	}
 	w.WriteHeader(resp.StatusCode)
-	_ = http.NewResponseController(w).Flush()
-	if _, err := io.Copy(&sessionWriter{session: s, writer: w}, resp.Body); err != nil {
+	if err := http.NewResponseController(w).Flush(); err != nil {
+		panic(http.ErrAbortHandler)
+	}
+	if _, err := io.Copy(w, resp.Body); err != nil {
 		panic(http.ErrAbortHandler)
 	}
 }
@@ -361,6 +388,11 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request, s *ProxySession)
 		return
 	}
 	defer func() { _ = client.Close() }()
+	// Hijack disables HTTP's automatic responses. The opaque tunnel has its own
+	// counter, excluding the local handshake and charging downstream bytes once.
+	if responseConn, ok := client.(*proxyResponseConn); ok {
+		responseConn.setSession(nil)
+	}
 	if !s.track(client) {
 		return
 	}

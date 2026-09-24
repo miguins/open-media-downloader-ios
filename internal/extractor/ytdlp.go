@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -11,6 +12,14 @@ import (
 	"strings"
 	"syscall"
 )
+
+// ytdlpFormat prefers H.264/AAC without transcoding. Extractors name H.264
+// "avc1.*" or "h264" and AAC "mp4a.*" or "aac". Video without a compatible audio
+// track is never selected; audio-only posts fall back to M4A and then MP3.
+const ytdlpFormat = "bv[vcodec~='^(avc1|h264)']+ba[acodec~='^(mp4a|aac)']/" +
+	"b[vcodec~='^(avc1|h264)'][acodec~='^(mp4a|aac)']/ba[ext=m4a]/ba[ext=mp3]"
+
+var ytdlpTooLarge = []byte("File is larger than max-filesize")
 
 // YTDLP extracts one public video post with yt-dlp.
 type YTDLP struct {
@@ -31,19 +40,24 @@ func (y *YTDLP) Extract(ctx context.Context, request Request, proxyURL string) (
 	}
 	args := []string{
 		"--ignore-config", "--no-config-locations", "--no-cache-dir", "--no-plugin-dirs", "--no-remote-components",
-		"--abort-on-error", "--no-playlist", "--max-downloads", "1", "--match-filters", "!is_live",
+		"--abort-on-error", "--no-playlist", "--match-filters", "!is_live",
 		"--concurrent-fragments", "1", "--retries", "3", "--fragment-retries", "3", "--file-access-retries", "1", "--socket-timeout", "30",
 		"--no-write-comments", "--no-write-info-json", "--no-write-playlist-metafiles", "--no-write-thumbnail", "--no-write-subs",
 		"--no-progress", "--color", "never", "--ies", "default,-generic", "--proxy", proxyURL,
 		"--ffmpeg-location", y.ffmpegPath, "--max-filesize", strconv.FormatInt(request.MaxBytes, 10),
 		"--paths", "home:" + request.WorkDir, "--paths", "temp:" + filepath.Join(request.WorkDir, ".omdi-runtime/tmp"),
 		"--output", "media.%(ext)s",
-		"--format", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1][acodec^=mp4a]/bestvideo[vcodec^=avc1]/bestaudio[ext=m4a]/bestaudio[ext=mp3]",
-		"--merge-output-format", "mp4", "--print", "after_move:filepath", "--", request.URL,
+		"--format", ytdlpFormat, "--merge-output-format", "mp4", "--", request.URL,
 	}
-	_, err := y.runner.Run(ctx, Command{Path: y.path, Args: args, Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
+	// --max-downloads is not used: yt-dlp exits with status 101 after reaching it,
+	// even on success. The URL policy and --no-playlist already bound a job to one post.
+	result, err := y.runner.Run(ctx, Command{Path: y.path, Args: args, Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
 	if err != nil {
 		return nil, adapterCommandError(ctx, err)
+	}
+	// yt-dlp skips an oversized download with a successful exit and only reports it on stdout.
+	if bytes.Contains(result.Stdout, ytdlpTooLarge) {
+		return nil, ErrTooLarge
 	}
 	names, err := discoverYTDLP(request.WorkDir)
 	if err != nil {

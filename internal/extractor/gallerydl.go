@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 )
+
+var galleryTooLarge = []byte("File size larger than allowed maximum")
 
 var galleryName = regexp.MustCompile(`^item-([0-9]{3})\.[A-Za-z0-9]+$`)
 
@@ -33,11 +36,17 @@ func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL strin
 		"--config-ignore", "--no-input", "--no-colors", "--no-postprocessors", "--no-mtime",
 		"--proxy", proxyURL, "--directory", request.WorkDir, "--filename", "item-{num:03}.{extension}",
 		"--range", "1-" + strconv.Itoa(request.MaxItems+1), "--filesize-max", strconv.FormatInt(request.MaxBytes, 10),
-		"--retries", "3", "--http-timeout", "30", "-o", "cache.file=:memory:", "--", request.URL,
+		"--retries", "3", "--http-timeout", "30", "-o", "cache.file=:memory:",
+		// An empty whitelist stops child extractors, such as external links in Reddit posts.
+		"-o", "extractor.whitelist=[]", "--", request.URL,
 	}
-	_, err := g.runner.Run(ctx, Command{Path: g.path, Args: args, Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
+	result, err := g.runner.Run(ctx, Command{Path: g.path, Args: args, Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
 	if err != nil {
 		return nil, adapterCommandError(ctx, err)
+	}
+	// gallery-dl skips an oversized file with a warning and continues successfully.
+	if bytes.Contains(result.Stderr, galleryTooLarge) {
+		return nil, ErrTooLarge
 	}
 	names, err := discoverGallery(request.WorkDir, request.MaxItems)
 	if err != nil {
@@ -79,6 +88,10 @@ func discoverGallery(dir string, maxItems int) ([]string, error) {
 	}
 	if len(items) > maxItems {
 		return nil, ErrTooLarge
+	}
+	// Extractors number a single-media post 0 (Reddit) and carousel entries from 1.
+	if len(items) == 1 && items[0].number == 0 {
+		return []string{items[0].name}, nil
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].number < items[j].number })
 	names := make([]string, len(items))

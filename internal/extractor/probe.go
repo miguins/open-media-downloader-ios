@@ -48,8 +48,9 @@ func (p *Probe) Inspect(ctx context.Context, workDir, name string) (Inspection, 
 	if err != nil || !info.Mode().IsRegular() {
 		return Inspection{}, errors.New("extractor: invalid local media entry")
 	}
+	// ffprobe has no -nostdin option; the runner already supplies empty standard input.
 	result, err := p.runner.Run(ctx, Command{Path: p.path, Dir: workDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10, Args: []string{
-		"-v", "error", "-nostdin", "-protocol_whitelist", "file", "-show_format", "-show_streams", "-of", "json", path,
+		"-v", "error", "-protocol_whitelist", "file", "-show_format", "-show_streams", "-of", "json", path,
 	}})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

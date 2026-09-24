@@ -406,7 +406,7 @@ func TestRunnerRuntimeSetupFailureCleansPartialDirectories(t *testing.T) {
 
 func TestRunnerProcessGroupConfirmationIsBounded(t *testing.T) {
 	command := helperCommand(t, "sleep", filepath.Join(t.TempDir(), "helper.pid"))
-	cmd := exec.CommandContext(context.Background(), command.Path, command.Args...)
+	cmd := exec.CommandContext(context.Background(), command.Path, command.Args...) //nolint:gosec // Test-only helper path and arguments.
 	cmd.Env = []string{"GO_WANT_EXTRACTOR_HELPER=1"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

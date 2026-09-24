@@ -12,16 +12,19 @@ import (
 	"syscall"
 )
 
+// YTDLP extracts one public video post with yt-dlp.
 type YTDLP struct {
 	path, ffmpegPath string
 	runner           *Runner
 	media            *MediaTools
 }
 
+// NewYTDLP constructs the yt-dlp adapter.
 func NewYTDLP(path, ffmpegPath string, runner *Runner, media *MediaTools) *YTDLP {
 	return &YTDLP{path: path, ffmpegPath: ffmpegPath, runner: runner, media: media}
 }
 
+// Extract downloads and validates one supported public post.
 func (y *YTDLP) Extract(ctx context.Context, request Request, proxyURL string) ([]File, error) {
 	if !validAdapterRequest(request, "youtube", "vimeo", "tiktok") || !validProxyURL(proxyURL) {
 		return nil, errors.New("extractor: invalid adapter request")

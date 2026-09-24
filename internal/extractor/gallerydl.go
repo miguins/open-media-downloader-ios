@@ -12,16 +12,19 @@ import (
 
 var galleryName = regexp.MustCompile(`^item-([0-9]{3})\.[A-Za-z0-9]+$`)
 
+// GalleryDL extracts bounded posts and carousels with gallery-dl.
 type GalleryDL struct {
 	path   string
 	runner *Runner
 	media  *MediaTools
 }
 
+// NewGalleryDL constructs the gallery-dl adapter.
 func NewGalleryDL(path string, runner *Runner, media *MediaTools) *GalleryDL {
 	return &GalleryDL{path: path, runner: runner, media: media}
 }
 
+// Extract downloads and validates one gallery-backed public post.
 func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL string) ([]File, error) {
 	if !validAdapterRequest(request, "instagram", "x", "reddit") || !validProxyURL(proxyURL) {
 		return nil, errors.New("extractor: invalid adapter request")

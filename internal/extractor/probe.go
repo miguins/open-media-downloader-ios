@@ -10,16 +10,19 @@ import (
 	"strings"
 )
 
+// Inspection is the trusted classification of one local media file.
 type Inspection struct {
 	Name, MediaType, Format, VideoCodec, AudioCodec string
 	NeedsRemux                                      bool
 }
 
+// Probe inspects local media with ffprobe.
 type Probe struct {
 	path   string
 	runner *Runner
 }
 
+// NewProbe constructs an ffprobe adapter.
 func NewProbe(path string, runner *Runner) *Probe { return &Probe{path: path, runner: runner} }
 
 type probeDocument struct {
@@ -35,6 +38,7 @@ type probeDocument struct {
 	} `json:"format"`
 }
 
+// Inspect validates a local entry and returns its media classification.
 func (p *Probe) Inspect(ctx context.Context, workDir, name string) (Inspection, error) {
 	if !safeWorkDir(workDir) || !plainName(name) {
 		return Inspection{}, errors.New("extractor: invalid local media entry")

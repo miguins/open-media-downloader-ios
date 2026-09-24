@@ -16,7 +16,10 @@ import (
 func testTool(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "tool")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nset -eu\n"+body+"\n"), 0o700); err != nil {
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nset -eu\n"+body+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o700); err != nil { //nolint:gosec // Private test helper must be executable.
 		t.Fatal(err)
 	}
 	return path
@@ -276,7 +279,7 @@ func TestYTDLPAdapterMatrix(t *testing.T) {
 	}
 	dir = t.TempDir()
 	regular(t, dir, "media.bin")
-	slowMedia := NewMediaTools(testTool(t, "sleep 1"), "/bin/true", NewRunner())
+	slowMedia := NewMediaTools(testTool(t, "exec sleep 1"), "/bin/true", NewRunner())
 	slowY := NewYTDLP("/bin/true", "/bin/true", NewRunner(), slowMedia)
 	timed, stop := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer stop()
@@ -312,7 +315,7 @@ func TestDiscoveryAndAdapterErrors(t *testing.T) {
 		t.Fatal("limit not mapped")
 	}
 	internal := errors.New("internal")
-	if adapterCommandError(context.Background(), internal) != internal {
+	if !errors.Is(adapterCommandError(context.Background(), internal), internal) {
 		t.Fatal("internal changed")
 	}
 	if !errors.Is(adapterCommandError(context.Background(), context.DeadlineExceeded), context.DeadlineExceeded) {
@@ -384,7 +387,7 @@ func TestGalleryAdapterAndDiscovery(t *testing.T) {
 	}
 	dir = t.TempDir()
 	regular(t, dir, "item-001.bin")
-	slowMedia := NewMediaTools(testTool(t, "sleep 1"), "/bin/true", NewRunner())
+	slowMedia := NewMediaTools(testTool(t, "exec sleep 1"), "/bin/true", NewRunner())
 	slowG := NewGalleryDL("/bin/true", NewRunner(), slowMedia)
 	timed, stop := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer stop()

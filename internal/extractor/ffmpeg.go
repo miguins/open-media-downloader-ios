@@ -8,16 +8,19 @@ import (
 	"path/filepath"
 )
 
+// MediaTools validates extracted files and performs safe local stream-copy remuxing.
 type MediaTools struct {
 	probe      *Probe
 	ffmpegPath string
 	runner     *Runner
 }
 
+// NewMediaTools constructs local ffprobe and FFmpeg processing.
 func NewMediaTools(ffprobePath, ffmpegPath string, runner *Runner) *MediaTools {
 	return &MediaTools{probe: NewProbe(ffprobePath, runner), ffmpegPath: ffmpegPath, runner: runner}
 }
 
+// Finalize validates files in order and remuxes compatible transport streams.
 func (m *MediaTools) Finalize(ctx context.Context, workDir string, names []string) ([]File, error) {
 	if len(names) == 0 || !safeWorkDir(workDir) {
 		return nil, ErrExtractionFailed

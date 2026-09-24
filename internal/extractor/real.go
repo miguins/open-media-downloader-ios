@@ -16,12 +16,14 @@ type proxySession interface {
 type beginSessionFunc func(context.Context, int64) (proxySession, error)
 type adapterFunc func(context.Context, Request, string) ([]File, error)
 
+// Real routes supported platforms through real extractors behind one egress session.
 type Real struct {
 	beginSession beginSessionFunc
 	ytdlp        adapterFunc
 	gallery      adapterFunc
 }
 
+// NewReal constructs production extractor routing.
 func NewReal(proxy *urlpolicy.Proxy, ytdlp *YTDLP, gallery *GalleryDL) *Real {
 	return &Real{
 		beginSession: func(ctx context.Context, maxBytes int64) (proxySession, error) { return proxy.Begin(ctx, maxBytes) },
@@ -29,6 +31,7 @@ func NewReal(proxy *urlpolicy.Proxy, ytdlp *YTDLP, gallery *GalleryDL) *Real {
 	}
 }
 
+// Extract downloads one post with the adapter selected for its platform.
 func (r *Real) Extract(ctx context.Context, request Request) ([]File, error) {
 	if request.MaxBytes <= 0 || request.MaxItems <= 0 || !safeWorkDir(request.WorkDir) {
 		return nil, errors.New("extractor: invalid request")
@@ -37,7 +40,7 @@ func (r *Real) Extract(ctx context.Context, request Request) ([]File, error) {
 	if err != nil {
 		return nil, errors.New("extractor: egress session unavailable")
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	var files []File
 	switch request.Platform {
 	case "youtube", "vimeo", "tiktok":

@@ -181,7 +181,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
+There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed`. When this was verified on 2026-09-24, YouTube and TikTok worked anonymously; Instagram redirected to its login page, X returned no guest results, Reddit blocked the test network, and the tested Vimeo video required a logged-in web client. Results vary by post, network, and platform policy. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

@@ -213,7 +213,10 @@ Cancellation, timeout, output overflow, or egress exhaustion signals the entire
 process group and allows a short grace period before sending a forced kill. This
 also terminates FFmpeg or other descendants launched by a trusted extractor.
 Compose sets explicit memory and process-count limits for the application
-container. The existing job timeout and free-space check remain in force.
+container. The existing job timeout and free-space check remain in force. The
+free-space preflight reserves twice `OMDI_MAX_JOB_BYTES` above
+`OMDI_MIN_FREE_BYTES`, because merging or remuxing keeps an input and its output
+on disk at the same time.
 
 ## `yt-dlp` Adapter
 
@@ -224,13 +227,19 @@ options that:
 - disable credentials, cookies, `.netrc`, playlists, live streams, subtitles,
   thumbnails, metadata sidecars, and generic URL extraction;
 - use the application proxy and configured FFmpeg path;
-- limit the operation to one download;
+- process only the submitted post without `--max-downloads`, which makes
+  `yt-dlp` exit with status 101 after a successful download;
 - write home and temporary outputs only inside the job work directory;
 - use a server-controlled output template;
-- prefer an iOS-compatible video/audio format and MP4 merge;
-- emit only bounded machine-readable final-path information.
+- prefer an iOS-compatible video/audio format and MP4 merge. Extractors name
+  H.264 either `avc1.*` or `h264` and AAC either `mp4a.*` or `aac`, so the
+  selector matches both spellings. Video without a compatible audio track is
+  never selected;
+- skip a download whose declared size exceeds `OMDI_MAX_JOB_BYTES`.
 
-The adapter does not trust the printed path. After successful exit it enumerates
+`yt-dlp` skips an oversized download with a successful exit and reports it only
+on standard output. The adapter detects that bounded marker and fails the job
+as `too_large`. After successful exit it enumerates
 the work directory, selects the expected server-named final entry, and rejects
 symlinks, subdirectories, auxiliary files, partial files, or multiple final
 outputs. Any FFmpeg child used by `yt-dlp` operates on locally downloaded files.
@@ -240,8 +249,9 @@ outputs. Any FFmpeg child used by `yt-dlp` operates on locally downloaded files.
 The adapter ignores default configuration, uses the application proxy for both
 extraction and downloads, stores its cache in memory, and writes only
 server-named numbered entries in the work directory. Credentials, cookies,
-archives, postprocessors, metadata sidecars, and recursive extraction are
-disabled.
+archives, postprocessors, and metadata sidecars are disabled. An empty
+extractor whitelist prevents child extractors, so external links in a post, such
+as a Reddit link post, are never followed.
 
 It requests at most `OMDI_MAX_JOB_ITEMS + 1` entries from the one submitted
 post. Finding the extra entry proves that the post exceeds the configured
@@ -250,13 +260,17 @@ truncated carousel. Output order follows the source post's media order.
 
 After a successful exit, the adapter enumerates the work directory rather than
 trusting printed paths. Every expected numbered entry must be a top-level
-non-symlink candidate. Missing, additional, nested, partial, or auxiliary
-entries reject the job.
+non-symlink candidate. Carousel entries are numbered from 1; a single-media
+post may be numbered 0, as Reddit does, and is accepted only as the sole entry.
+Missing, additional, nested, partial, or auxiliary entries reject the job.
+`gallery-dl` skips an oversized file with a warning and a successful exit; the
+adapter detects that bounded diagnostic marker and fails the job as
+`too_large` instead of reporting the resulting gap as `extraction_failed`.
 
 ## Inspection and Remux
 
 Each candidate passes through `ffprobe` before it is reported to the worker.
-`ffprobe` runs non-interactively with error-only logging, JSON format and stream
+`ffprobe` runs with closed standard input (it has no `-nostdin` option), error-only logging, JSON format and stream
 output, and a local-file-only protocol whitelist. Its JSON output is size
 limited and decoded with a closed internal schema for the fields the service
 uses.

@@ -3,7 +3,7 @@
 ## Project
 
 - Module: `github.com/miguins/open-media-downloader-ios`; executable: `omdi`.
-- Phases 0–2 are complete; Phase 3 (real extractors) is next and has not started. Current scope: `omdi serve`, `omdi keys create|list|revoke`, `omdi jobs list|delete|purge`, `GET /healthz`, `GET /readyz`, authenticated `/v1/jobs` create/get/cancel, token-based `/v1/downloads/{token}`, a SQLite queue with one worker and a fake extractor, and periodic cleanup.
+- Phases 0–3 are complete; Phase 4 (packaging and documentation finalization) is next. Current scope: `omdi serve`, `omdi keys create|list|revoke|purge`, `omdi jobs list|delete|purge`, `GET /healthz`, `GET /readyz`, authenticated `/v1/jobs` create/get/cancel, token-based `/v1/downloads/{token}`, a SQLite queue with one worker, real `yt-dlp` and `gallery-dl` extraction behind a validating egress proxy, a build-tagged fake extractor for the Bruno collection, and periodic cleanup.
 - Read `docs/roadmap.md` before planning work. It is the source of truth for implementation order, status, and the next milestone; update it whenever delivery status changes. `docs/architecture.md` describes current and target system boundaries but does not override the roadmap.
 - Treat the Phase 1 and Phase 2 files under `docs/superpowers/records/` as historical delivery records, not implementation-plan templates. Starting with Phase 3, commit and obtain approval for the design specification and a current-format Superpowers implementation plan, then select the execution method before changing behavior.
 - Docker Compose is the primary development environment. Use the `Makefile` targets instead of requiring host Go, Node.js, Bruno, or media tools.

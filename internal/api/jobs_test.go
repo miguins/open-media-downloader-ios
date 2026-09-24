@@ -207,6 +207,7 @@ func TestCreateJobRejectsInvalidRequests(t *testing.T) {
 		{name: "trailing data", key: f.key, body: `{"url":"https://vimeo.com/1"} {}`, status: 400, code: "invalid_request"},
 		{name: "too large", key: f.key, body: `{"url":"https://vimeo.com/` + strings.Repeat("a", 2048) + `"}`, status: 413, code: "request_too_large"},
 		{name: "unsupported url", key: f.key, body: `{"url":"http://127.0.0.1/admin"}`, status: 422, code: "unsupported_url"},
+		{name: "collection url", key: f.key, body: `{"url":"https://vimeo.com/channels/staffpicks"}`, status: 422, code: "unsupported_url"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -216,6 +217,10 @@ func TestCreateJobRejectsInvalidRequests(t *testing.T) {
 	}
 	if f.notified != 0 {
 		t.Fatal("rejected requests notified the worker")
+	}
+	jobs, err := f.store.Jobs(context.Background(), store.JobFilter{OwnerID: f.ownerID})
+	if err != nil || len(jobs) != 0 {
+		t.Fatalf("rejected requests persisted jobs: %d, %v", len(jobs), err)
 	}
 }
 

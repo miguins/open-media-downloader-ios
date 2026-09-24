@@ -1,20 +1,23 @@
 // Package urlpolicy normalizes submitted media URLs and enforces network destination policy.
 package urlpolicy
 
+import "net/url"
+
 // platform is a supported media platform and the registrable domains it serves.
 type platform struct {
-	id      string
-	domains []string
+	id        string
+	domains   []string
+	normalize func(*url.URL) error
 }
 
 func supportedPlatforms() []platform {
 	return []platform{
-		{id: "youtube", domains: []string{"youtube.com", "youtu.be"}},
-		{id: "instagram", domains: []string{"instagram.com"}},
-		{id: "tiktok", domains: []string{"tiktok.com"}},
-		{id: "x", domains: []string{"x.com", "twitter.com"}},
-		{id: "reddit", domains: []string{"reddit.com", "redd.it"}},
-		{id: "vimeo", domains: []string{"vimeo.com"}},
+		{id: "youtube", domains: []string{"youtube.com", "youtu.be"}, normalize: normalizeYouTube},
+		{id: "instagram", domains: []string{"instagram.com"}, normalize: normalizeInstagram},
+		{id: "tiktok", domains: []string{"tiktok.com"}, normalize: normalizeTikTok},
+		{id: "x", domains: []string{"x.com", "twitter.com"}, normalize: normalizeX},
+		{id: "reddit", domains: []string{"reddit.com", "redd.it"}, normalize: normalizeReddit},
+		{id: "vimeo", domains: []string{"vimeo.com"}, normalize: normalizeVimeo},
 	}
 }
 

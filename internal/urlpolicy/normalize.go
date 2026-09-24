@@ -62,7 +62,7 @@ func New(allowedPlatforms []string, maxLength int) (*Policy, error) {
 }
 
 // Normalize validates raw and returns its normalized form: lowercase ASCII host without
-// a trailing dot or default port, and no fragment.
+// a trailing dot or default port, a direct-post path, and only identity query parameters.
 func (p *Policy) Normalize(raw string) (Result, error) {
 	if raw == "" || len(raw) > p.maxLength {
 		return Result{}, unsupported("length is out of range")
@@ -88,7 +88,7 @@ func (p *Policy) Normalize(raw string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	platformID, ok := p.match(host)
+	matched, ok := p.match(host)
 	if !ok {
 		return Result{}, unsupported("host is not an allowed platform")
 	}
@@ -97,8 +97,11 @@ func (p *Policy) Normalize(raw string) (Result, error) {
 	parsed.Host = host
 	parsed.Fragment = ""
 	parsed.RawFragment = ""
+	if err := matched.normalize(parsed); err != nil {
+		return Result{}, err
+	}
 
-	return Result{URL: parsed.String(), Platform: platformID}, nil
+	return Result{URL: parsed.String(), Platform: matched.id}, nil
 }
 
 func normalizeHost(host string) (string, error) {
@@ -117,16 +120,16 @@ func normalizeHost(host string) (string, error) {
 	return ascii, nil
 }
 
-func (p *Policy) match(host string) (string, bool) {
+func (p *Policy) match(host string) (platform, bool) {
 	for _, candidate := range p.platforms {
 		for _, domain := range candidate.domains {
 			if host == domain || strings.HasSuffix(host, "."+domain) {
-				return candidate.id, true
+				return candidate, true
 			}
 		}
 	}
 
-	return "", false
+	return platform{}, false
 }
 
 func unsupported(reason string) error {

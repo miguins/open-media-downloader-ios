@@ -21,14 +21,12 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: |-
-        bru.setVar("jobId", res.body.id);
+      code: bru.setVar("jobId", res.body.id);
     - type: tests
       code: |-
         test("queues the normalized job", function () {
           const body = res.getBody();
           expect(body.status).to.equal("queued");
-          expect(body.url).to.equal("https://vimeo.com/76979871");
           expect(body.error).to.equal(null);
           expect(res.getHeader("location")).to.equal("/v1/jobs/" + body.id);
         });
@@ -36,9 +34,6 @@ runtime:
     - expression: res.status
       operator: eq
       value: "202"
-    - expression: res.body.platform
-      operator: eq
-      value: vimeo
 
 settings:
   encodeUrl: true

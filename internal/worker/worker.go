@@ -163,9 +163,16 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 		w.fail(ctx, j, job.ErrorTimeout)
 
 		return
-	case err != nil:
-		// Extractor errors can carry URLs and diagnostics, so they are never logged or stored.
+	case errors.Is(err, extractor.ErrTooLarge):
+		w.fail(ctx, j, job.ErrorTooLarge)
+
+		return
+	case errors.Is(err, extractor.ErrExtractionFailed):
 		w.fail(ctx, j, job.ErrorExtractionFailed)
+
+		return
+	case err != nil:
+		w.fail(ctx, j, job.ErrorInternal)
 
 		return
 	}
@@ -236,7 +243,7 @@ func (w *Worker) discard(ctx context.Context, j job.Job) {
 
 // fail records a failure unless the job was canceled or deleted meanwhile.
 func (w *Worker) fail(ctx context.Context, j job.Job, code job.ErrorCode) {
-	w.logger.WarnContext(ctx, "job failed", "job_id", j.ID, "error_code", string(code))
+	w.logger.WarnContext(ctx, "job failed", "job_id", j.ID, "platform", j.Platform, "error_code", string(code))
 	failed := j
 	_ = failed.Transition(job.StatusFailed, code, w.now()) // Claimed jobs are running, and code is a valid constant.
 	err := w.store.UpdateJobStatus(ctx, failed, job.StatusRunning)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -167,9 +168,15 @@ func TestRunOnceFailures(t *testing.T) {
 		settings func(*Settings)
 		want     job.ErrorCode
 	}{
-		{name: "extractor error", ext: extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) {
+		{name: "internal extractor error", ext: extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) {
 			return nil, errors.New("raw extractor diagnostic with https://signed.example/secret")
+		}), want: job.ErrorInternal},
+		{name: "typed extraction failure", ext: extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) {
+			return nil, fmt.Errorf("wrapped: %w", extractor.ErrExtractionFailed)
 		}), want: job.ErrorExtractionFailed},
+		{name: "typed size failure", ext: extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) {
+			return nil, fmt.Errorf("wrapped: %w", extractor.ErrTooLarge)
+		}), want: job.ErrorTooLarge},
 		{name: "unsafe output", ext: writeFile("../escape", "video/mp4", "x"), want: job.ErrorExtractionFailed},
 		{name: "unsupported type", ext: writeFile("page.html", "text/html", "x"), want: job.ErrorExtractionFailed},
 		{name: "over budget", ext: writeFile("big.mp4", "video/mp4", strings.Repeat("x", 11)),

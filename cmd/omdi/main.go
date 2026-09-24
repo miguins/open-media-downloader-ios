@@ -14,7 +14,6 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/auth"
 	"github.com/miguins/open-media-downloader-ios/internal/cleanup"
 	"github.com/miguins/open-media-downloader-ios/internal/config"
-	"github.com/miguins/open-media-downloader-ios/internal/extractor"
 	"github.com/miguins/open-media-downloader-ios/internal/readiness"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
@@ -110,7 +109,12 @@ func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog
 
 		return 1
 	}
-	jobWorker := worker.New(st, layout, extractor.Fake{}, worker.Settings{
+	components, err := newExtractorComponents(cfg)
+	if err != nil {
+		logger.Error("configure extractors")
+		return 1
+	}
+	jobWorker := worker.New(st, layout, components.extractor, worker.Settings{
 		JobTimeout:   cfg.JobTimeout,
 		MaxJobBytes:  cfg.MaxJobBytes,
 		MinFreeBytes: cfg.MinFreeBytes,
@@ -140,7 +144,7 @@ func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog
 		},
 		Logger: logger,
 	})
-	if err := app.Run(ctx, cfg.HTTPAddr, router, logger, jobWorker.Run, cleaner.Run); err != nil {
+	if err := app.Run(ctx, cfg.HTTPAddr, router, logger, components.run, jobWorker.Run, cleaner.Run); err != nil {
 		logger.Error("application stopped unexpectedly", "error", err)
 
 		return 1

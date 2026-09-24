@@ -93,20 +93,27 @@ func (r *Runner) run(ctx context.Context, command Command, mkdir func(string, os
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
-	if stdout.overflow || stderr.overflow {
-		return result, ErrOutputLimit
+	return result, commandError(ctx, err, stdout.overflow || stderr.overflow)
+}
+
+func commandError(ctx context.Context, err error, overflow bool) error {
+	if errors.Is(err, errProcessCleanup) {
+		return errProcessCleanup
+	}
+	if overflow {
+		return ErrOutputLimit
 	}
 	if ctx.Err() != nil {
-		return result, ctx.Err()
+		return ctx.Err()
 	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return result, ErrCommandExit
+			return ErrCommandExit
 		}
-		return result, errors.New("extractor: execute command")
+		return errors.New("extractor: execute command")
 	}
-	return result, nil
+	return nil
 }
 
 func runProcess(ctx context.Context, cmd *exec.Cmd, grace time.Duration) error {
@@ -118,13 +125,16 @@ func runProcess(ctx context.Context, cmd *exec.Cmd, grace time.Duration) error {
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	var waitErr, signalErr error
 	select {
-	case err := <-done:
-		return errors.Join(err, terminateProcessGroup(cmd.Process.Pid, grace))
+	case waitErr = <-done:
+		signalErr = terminateProcessGroup(cmd.Process.Pid, grace)
 	case <-ctx.Done():
-		signalErr := terminateProcessGroup(cmd.Process.Pid, grace)
-		return errors.Join(<-done, signalErr)
+		signalErr = terminateProcessGroup(cmd.Process.Pid, grace)
+		waitErr = <-done
 	}
+	// Cmd.Wait must reap the leader before group reaping can consume any child.
+	return errors.Join(waitErr, signalErr, confirmProcessGroupExit(cmd.Process.Pid, grace))
 }
 
 type cappedCapture struct {

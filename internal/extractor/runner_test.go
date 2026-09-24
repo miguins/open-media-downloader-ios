@@ -331,8 +331,8 @@ func TestRunnerSignalErrorsAreSanitized(t *testing.T) {
 }
 
 func TestRunnerCancelsDescendantAfterLeaderExits(t *testing.T) {
-	// Reap the deliberately orphaned fixture in this test process. Production
-	// containers use an init process; changing subreaper state is test-only.
+	// Adopt the deliberately orphaned fixture here so the runner must reap it.
+	// The assertion precedes every test-side reap; cleanup is only a failure guard.
 	const prSetChildSubreaper = 36
 	if _, _, errno := syscall.Syscall6(syscall.SYS_PRCTL, prSetChildSubreaper, 1, 0, 0, 0, 0); errno != 0 {
 		t.Fatal(errno)
@@ -373,22 +373,8 @@ func TestRunnerCancelsDescendantAfterLeaderExits(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("orphaned descendant held runner open")
 	}
-	reaped := make(chan syscall.WaitStatus, 1)
-	go func() {
-		var status syscall.WaitStatus
-		_, _ = syscall.Wait4(child, &status, 0, nil)
-		reaped <- status
-	}()
-	select {
-	case status := <-reaped:
-		if !status.Signaled() || status.Signal() != syscall.SIGKILL {
-			t.Fatalf("descendant was not force-killed: status=%v", status)
-		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("descendant remains after runner returned")
-	}
 	if err := syscall.Kill(child, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Fatalf("descendant PID still exists: %v", err)
+		t.Fatalf("descendant remains at Run return, before test reaping: %v", err)
 	}
 	assertRuntimeRemoved(t, command.Dir)
 }
@@ -416,4 +402,34 @@ func TestRunnerRuntimeSetupFailureCleansPartialDirectories(t *testing.T) {
 	}
 	assertSafeRunnerError(t, err)
 	assertRuntimeRemoved(t, command.Dir)
+}
+
+func TestRunnerProcessGroupConfirmationIsBounded(t *testing.T) {
+	command := helperCommand(t, "sleep", filepath.Join(t.TempDir(), "helper.pid"))
+	cmd := exec.CommandContext(context.Background(), command.Path, command.Args...)
+	cmd.Env = []string{"GO_WANT_EXTRACTOR_HELPER=1"}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+	})
+	start := time.Now()
+	err := confirmProcessGroupExit(cmd.Process.Pid, 5*time.Millisecond)
+	if !errors.Is(err, errProcessCleanup) || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("confirmation error = %v, elapsed = %v", err, time.Since(start))
+	}
+	assertSafeRunnerError(t, err)
+}
+
+func TestRunnerIncompleteCleanupIsInternalEvenWhenCanceledOrOverflowed(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := commandError(ctx, errProcessCleanup, true)
+	if !errors.Is(err, errProcessCleanup) || errors.Is(err, context.Canceled) || errors.Is(err, ErrOutputLimit) || errors.Is(err, ErrExtractionFailed) {
+		t.Fatalf("incomplete cleanup classification = %v", err)
+	}
+	assertSafeRunnerError(t, err)
 }

@@ -6,9 +6,9 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 3 — Real extractors is in progress. Milestone 1 is active.**
+**Phase 3 — Real extractors is complete. Phase 4 is next.**
 
-The next development effort is a Superpowers design and implementation plan for **Phase 3 — Real extractors**, beginning with the `yt-dlp` adapter behind the Phase 2 `Extractor` boundary and extractor egress control.
+The next development effort is **Phase 4 — Packaging and documentation finalization**.
 
 The Phase 1 and Phase 2 documents under `docs/superpowers/records/` were consolidated at their handoffs and record delivered scope; they are not pre-implementation plans under the current Superpowers format. Phase 3 must follow the complete current workflow before implementation begins.
 
@@ -52,7 +52,7 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 
 ## Phase 3 — Real extractors
 
-**Status: In progress**
+**Status: Complete** — [design](superpowers/specs/2026-09-23-phase-3-real-extractors-design.md), [delivery record](superpowers/records/2026-09-23-phase-3-real-extractors.md)
 
 - `yt-dlp` adapter.
 - `ffprobe` metadata inspection.

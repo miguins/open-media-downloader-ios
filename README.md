@@ -1,6 +1,6 @@
 # OpenMediaDownloaderIOS
 
-OpenMediaDownloaderIOS is the foundation of a self-hosted media download API intended for use from an iOS Shortcut. The current milestone provides the complete job lifecycle with a fake extractor: authenticated endpoints to queue, poll, and cancel jobs, a persistent single-worker queue, short-lived download links, and automatic cleanup. Real extractors (`yt-dlp`, `gallery-dl`) arrive in Phase 3; until then every job produces a small synthetic video.
+OpenMediaDownloaderIOS is a self-hosted media download API intended for use from an iOS Shortcut. It provides authenticated endpoints to queue, poll, and cancel jobs, a persistent single-worker queue, real platform extractors, short-lived download links, and automatic cleanup.
 
 ## Requirements
 
@@ -96,6 +96,8 @@ curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
 - `DELETE /v1/jobs/{id}` cancels a queued or running job.
 - `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`.
 
+Each job accepts exactly one public post URL; profiles, channels, playlists, feeds, and collections are rejected. YouTube, Vimeo, and TikTok route through `yt-dlp`; Instagram, X, and Reddit route through `gallery-dl`. A carousel remains one job with up to `OMDI_MAX_JOB_ITEMS` ordered results (20 by default). Outputs are compatibility-first MP4/M4A, MP3, JPEG, PNG, WebP, GIF, or QuickTime media. FFmpeg is used only for local H.264/AAC stream-copy remuxing; incompatible codecs are rejected instead of transcoded.
+
 Jobs, files, and tokens are removed automatically after `OMDI_JOB_RETENTION`. Operators can manage jobs from the CLI:
 
 ```bash
@@ -110,7 +112,7 @@ Open `collection/` in Bruno and select the `local` environment for host-local re
 
 For production, copy `collection/.env.example` to `collection/.env`, replace the placeholder with the real HTTPS base URL, and select `production`. This file is separate from the project-root `.env` and is ignored by Git.
 
-Run the local collection against the Compose service without installing Bruno or Node.js. It creates a temporary API key and revokes it afterwards:
+Run the local collection against the Compose service without installing Bruno or Node.js. It creates a temporary API key and uses the build-tagged fake extractor so the required suite stays deterministic and offline. Production and default builds always use the real extractors.
 
 ```bash
 make collection-test
@@ -132,6 +134,8 @@ make collection-test
 | `make docker-build` | Build the non-root production image as `omdi:local`. |
 | `make image-scan` | Scan the production image for fixed high or critical vulnerabilities. |
 | `make smoke` | Validate `/healthz` inside the production image. |
+| `make real-smoke URL=...` | Optionally exercise real extraction and network access, then purge temporary state. |
+| `make compose-check` | Verify the application memory and PID limits. |
 | `make compose-up` | Start the development service with Compose. |
 | `make collection-test` | Run the Bruno collection against the Compose service. |
 | `make compose-down` | Stop Compose services without deleting named data. |
@@ -173,9 +177,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-Jobs use a fake extractor, so no real media is downloaded yet, and there is no iOS Shortcut package.
-
-Phases 0 (project foundation), 1 (secure core), and 2 (job lifecycle) are complete. The next development effort is Phase 3, real extractors. See the ordered delivery status in the [Roadmap](docs/roadmap.md) and the current and planned system boundaries in [Architecture](docs/architecture.md).
+There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

@@ -113,5 +113,6 @@ ci:
 	$(MAKE) secret-scan
 	$(MAKE) build
 	$(MAKE) compose-check
+	sh scripts/test-real-smoke.sh
 	$(MAKE) docker-build smoke image-scan
 	$(MAKE) collection-test

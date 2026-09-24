@@ -33,6 +33,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 base = "http://127.0.0.1:8080"
@@ -59,7 +60,9 @@ try:
         path = "/tmp/omdi-real-smoke-%d" % index
         downloads.append(path)
         size = 0
-        with urllib.request.urlopen(base + item["download_url"], timeout=30) as response, open(path, "wb") as output:
+        # download_url is absolute under OMDI_PUBLIC_URL; fetch its path from the local listener.
+        download = base + urllib.parse.urlsplit(item["download_url"]).path
+        with urllib.request.urlopen(download, timeout=30) as response, open(path, "wb") as output:
             while True:
                 chunk = response.read(64 * 1024)
                 if not chunk:

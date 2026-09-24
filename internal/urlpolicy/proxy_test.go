@@ -58,12 +58,9 @@ func TestProxyHTTPBudgetRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("exhausted session status = %d", resp.StatusCode)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("exhausted session emitted another response: %d", resp.StatusCode)
 	}
 }
 
@@ -670,6 +667,96 @@ func TestProxyHTTPNotModifiedWireAccounting(t *testing.T) {
 	}
 }
 
+func TestProxyAutomaticResponsesUseSessionBudget(t *testing.T) {
+	for _, tt := range []struct{ name, request, status string }{
+		{"malformed", "INVALID\r\n\r\n", "HTTP/1.1 400 Bad Request\r\n"},
+		{"unsupported expectation", "POST http://target.example/path HTTP/1.1\r\nHost: target.example\r\nExpect: unsupported\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", "HTTP/1.1 417 Expectation Failed\r\n"},
+		{"general options", "OPTIONS * HTTP/1.1\r\nHost: target.example\r\nConnection: close\r\n\r\n", "HTTP/1.1 200 OK\r\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, budget := range []int64{1048577, 0} {
+				t.Run(strconv.FormatInt(budget, 10), func(t *testing.T) {
+					p := startProxy(t, publicProxyResolver(), proxyDialFunc(func(context.Context, string, string) (net.Conn, error) {
+						t.Error("automatic response dialed upstream")
+						return nil, ErrNonPublicAddress
+					}))
+					s := beginProxy(t, p, 1)
+					if err := s.charge(1048577 - budget); err != nil {
+						t.Fatal(err)
+					}
+					wire := rawProxyResponse(t, s, tt.request)
+					s.mu.Lock()
+					charged := budget - s.remaining
+					tracked := len(s.conns)
+					s.mu.Unlock()
+					if tracked != 0 {
+						t.Fatalf("closed automatic-response connection remains tracked: %d", tracked)
+					}
+					if int64(len(wire)) > budget || charged != int64(len(wire)) {
+						t.Fatalf("automatic response emitted %d bytes, charged %d, budget %d: %q", len(wire), charged, budget, wire)
+					}
+					if budget > 0 && !strings.HasPrefix(string(wire), tt.status) {
+						t.Fatalf("automatic response = %q", wire)
+					}
+					if budget == 0 && !errors.Is(s.Err(), ErrEgressTooLarge) {
+						t.Fatalf("automatic response overflow = %v", s.Err())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestProxyAutomaticOptionsConnectionClosesWithSession(t *testing.T) {
+	p := startProxy(t, publicProxyResolver(), &net.Dialer{})
+	s := beginProxy(t, p, 1)
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp4", strings.TrimPrefix(s.URL(), "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(time.Second))
+	if _, err := io.WriteString(conn, "OPTIONS * HTTP/1.1\r\nHost: target.example\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, &http.Request{Method: http.MethodOptions})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("OPTIONS status = %d", resp.StatusCode)
+	}
+	_ = s.Close()
+	if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
+		t.Fatalf("OPTIONS connection remained open after Close: %v", err)
+	}
+}
+
+func TestProxyUnboundConnectionCannotOutliveBegin(t *testing.T) {
+	p, err := NewProxy(publicProxyResolver(), &net.Dialer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.listener.Close() }()
+	client, err := (&net.Dialer{}).DialContext(t.Context(), "tcp4", p.listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	accepted, err := p.listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = accepted.Close() }()
+	beginProxy(t, p, 1)
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := client.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("unbound connection survived Begin: %v", err)
+	}
+}
+
 func TestProxyHTTPRejectsProtocolUpgrade(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusSwitchingProtocols) }))
 	defer upstream.Close()
@@ -763,29 +850,26 @@ func TestProxyCancellationDuringDial(t *testing.T) {
 	}
 }
 
-type proxyValueContext struct {
-	context.Context
-	conn   net.Conn
-	cancel context.CancelFunc
-}
-
-func (c proxyValueContext) Value(key any) any {
-	if _, ok := key.(proxyConnKey); ok {
-		c.cancel()
-		return c.conn
+func TestProxyCancellationBeforeAccept(t *testing.T) {
+	p, err := NewProxy(publicProxyResolver(), &net.Dialer{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	return c.Context.Value(key)
-}
-
-func TestProxyCancellationBeforeClientTracking(t *testing.T) {
-	p := startProxy(t, publicProxyResolver(), &net.Dialer{})
+	defer func() { _ = p.listener.Close() }()
 	s := beginProxy(t, p, 1)
-	local, remote := net.Pipe()
-	defer func() { _ = remote.Close() }()
-	req := httptest.NewRequestWithContext(proxyValueContext{Context: t.Context(), conn: local, cancel: s.cancel}, http.MethodGet, "http://target.example/path", nil)
-	p.serveHTTP(httptest.NewRecorder(), req)
-	_ = remote.SetReadDeadline(time.Now().Add(time.Second))
-	if _, err := remote.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+	client, err := (&net.Dialer{}).DialContext(t.Context(), "tcp4", p.listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	s.cancel()
+	accepted, err := p.listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = accepted.Close() }()
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := client.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
 		t.Fatalf("canceled client remains open: %v", err)
 	}
 }

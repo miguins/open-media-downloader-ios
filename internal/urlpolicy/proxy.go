@@ -32,6 +32,7 @@ type Proxy struct {
 	dialer   Dialer
 	mu       sync.Mutex
 	active   *ProxySession
+	unbound  map[*proxyResponseConn]struct{}
 	stopped  bool
 }
 
@@ -45,7 +46,8 @@ func newProxy(resolver Resolver, dialer Dialer, listen func(context.Context, str
 	if err != nil {
 		return nil, errors.New("egress proxy listener unavailable")
 	}
-	p := &Proxy{listener: proxyListener{Listener: listener}, resolver: resolver, dialer: dialer}
+	p := &Proxy{resolver: resolver, dialer: dialer, unbound: make(map[*proxyResponseConn]struct{})}
+	p.listener = proxyListener{Listener: listener, proxy: p}
 	p.server = &http.Server{
 		Handler:           http.HandlerFunc(p.serveHTTP),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -90,6 +92,7 @@ func (p *Proxy) Run(ctx context.Context) error {
 func (p *Proxy) shutdown() {
 	p.mu.Lock()
 	p.stopped = true
+	p.closeUnbound()
 	s := p.active
 	p.mu.Unlock()
 	if s != nil {
@@ -111,6 +114,7 @@ func (p *Proxy) Begin(ctx context.Context, maxBytes int64) (*ProxySession, error
 	if p.active != nil {
 		return nil, ErrProxyBusy
 	}
+	p.closeUnbound()
 	sessionCtx, cancel := context.WithCancel(ctx)
 	s := &ProxySession{proxy: p, ctx: sessionCtx, cancel: cancel, conns: make(map[net.Conn]struct{}), remaining: EgressBudget(maxBytes)}
 	p.active = s
@@ -175,20 +179,54 @@ type proxyConnKey struct{}
 
 // Count below net/http so automatic informational responses, header suppression,
 // and response framing all pass through the same budget before reaching the wire.
-type proxyListener struct{ net.Listener }
+type proxyListener struct {
+	net.Listener
+	proxy *Proxy
+}
 
 func (l proxyListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
 		return nil, err
 	}
-	return &proxyResponseConn{Conn: conn}, nil
+	l.proxy.mu.Lock()
+	s := l.proxy.active
+	responseConn := &proxyResponseConn{Conn: conn, proxy: l.proxy, owner: s, session: s}
+	if s == nil {
+		l.proxy.unbound[responseConn] = struct{}{}
+	}
+	l.proxy.mu.Unlock()
+	if s != nil {
+		s.track(conn)
+	}
+	return responseConn, nil
+}
+
+// Called with p.mu held, before publishing a new session or stopping the server.
+func (p *Proxy) closeUnbound() {
+	for conn := range p.unbound {
+		_ = conn.Conn.Close()
+		delete(p.unbound, conn)
+	}
 }
 
 type proxyResponseConn struct {
 	net.Conn
+	proxy   *Proxy
+	owner   *ProxySession
 	mu      sync.Mutex
 	session *ProxySession
+}
+
+func (c *proxyResponseConn) Close() error {
+	if c.owner != nil {
+		c.owner.untrack(c.Conn)
+	} else {
+		c.proxy.mu.Lock()
+		delete(c.proxy.unbound, c)
+		c.proxy.mu.Unlock()
+	}
+	return c.Conn.Close()
 }
 
 func (c *proxyResponseConn) setSession(s *ProxySession) {
@@ -219,6 +257,9 @@ func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	s := p.active
 	p.mu.Unlock()
+	if conn, ok := r.Context().Value(proxyConnKey{}).(*proxyResponseConn); ok {
+		s = conn.owner
+	}
 	if s == nil || s.ctx.Err() != nil {
 		http.Error(w, "egress unavailable", http.StatusServiceUnavailable)
 		return
@@ -227,15 +268,6 @@ func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	stop := context.AfterFunc(s.ctx, cancel)
 	defer stop()
-	if conn, ok := r.Context().Value(proxyConnKey{}).(net.Conn); ok {
-		if responseConn, ok := conn.(*proxyResponseConn); ok {
-			responseConn.setSession(s)
-		}
-		if !s.track(conn) {
-			return
-		}
-		defer s.untrack(conn)
-	}
 	if r.Method == http.MethodConnect {
 		p.connect(w, r.WithContext(ctx), s)
 		return
@@ -390,13 +422,15 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request, s *ProxySession)
 	defer func() { _ = client.Close() }()
 	// Hijack disables HTTP's automatic responses. The opaque tunnel has its own
 	// counter, excluding the local handshake and charging downstream bytes once.
+	trackedClient := client
 	if responseConn, ok := client.(*proxyResponseConn); ok {
 		responseConn.setSession(nil)
+		trackedClient = responseConn.Conn
 	}
-	if !s.track(client) {
+	if !s.track(trackedClient) {
 		return
 	}
-	defer s.untrack(client)
+	defer s.untrack(trackedClient)
 	if _, err := io.WriteString(client, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		return
 	}

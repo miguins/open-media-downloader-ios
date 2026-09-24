@@ -120,7 +120,8 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 
 		return
 	}
-	if available < uint64(w.settings.MinFreeBytes)+uint64(w.settings.MaxJobBytes) { //nolint:gosec // Settings are validated as non-negative.
+	// Merging or remuxing keeps the input and the output on disk at the same time.
+	if available < uint64(w.settings.MinFreeBytes)+2*uint64(w.settings.MaxJobBytes) { //nolint:gosec // Settings are validated as non-negative.
 		w.fail(ctx, j, job.ErrorTooLarge)
 
 		return

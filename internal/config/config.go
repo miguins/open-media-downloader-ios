@@ -41,6 +41,7 @@ type Config struct {
 	TokenTTL         time.Duration
 	PublicURL        string
 	MaxQueuedJobs    int
+	MaxJobItems      int
 	Tools            Tools
 }
 
@@ -67,6 +68,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		TokenTTL:         l.duration("OMDI_TOKEN_TTL", 15*time.Minute, time.Minute, 24*time.Hour),
 		PublicURL:        l.publicURL("OMDI_PUBLIC_URL", "http://localhost:8080"),
 		MaxQueuedJobs:    int(l.integer("OMDI_MAX_QUEUED_JOBS", 10, 1, 1000)),
+		MaxJobItems:      int(l.integer("OMDI_MAX_JOB_ITEMS", 20, 1, 100)),
 		Tools: Tools{
 			YTDLP:     l.path("OMDI_YTDLP_PATH", "/opt/media-tools/bin/yt-dlp"),
 			GalleryDL: l.path("OMDI_GALLERYDL_PATH", "/opt/media-tools/bin/gallery-dl"),

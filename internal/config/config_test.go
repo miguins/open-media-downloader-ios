@@ -29,6 +29,7 @@ func defaultConfig() Config {
 		TokenTTL:         15 * time.Minute,
 		PublicURL:        "http://localhost:8080",
 		MaxQueuedJobs:    10,
+		MaxJobItems:      20,
 		Tools: Tools{
 			YTDLP:     "/opt/media-tools/bin/yt-dlp",
 			GalleryDL: "/opt/media-tools/bin/gallery-dl",
@@ -66,6 +67,7 @@ func TestLoadValidOverrides(t *testing.T) {
 		"OMDI_FFPROBE_PATH":      "/usr/bin/ffprobe",
 		"OMDI_PUBLIC_URL":        "https://omdi.example.com/base/",
 		"OMDI_MAX_QUEUED_JOBS":   "1000",
+		"OMDI_MAX_JOB_ITEMS":     "100",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -84,6 +86,7 @@ func TestLoadValidOverrides(t *testing.T) {
 		TokenTTL:         5 * time.Minute,
 		PublicURL:        "https://omdi.example.com/base",
 		MaxQueuedJobs:    1000,
+		MaxJobItems:      100,
 		Tools: Tools{
 			YTDLP:     "/usr/bin/yt-dlp",
 			GalleryDL: "/usr/bin/gallery-dl",
@@ -102,6 +105,13 @@ func TestLoadAcceptsHTTPAddrForms(t *testing.T) {
 		if err != nil || got.HTTPAddr != value {
 			t.Fatalf("Load(%q) = %q, %v", value, got.HTTPAddr, err)
 		}
+	}
+}
+
+func TestLoadValidMaxJobItems(t *testing.T) {
+	got, err := Load(lookupFrom(map[string]string{"OMDI_MAX_JOB_ITEMS": "100"}))
+	if err != nil || got.MaxJobItems != 100 {
+		t.Fatalf("Load() MaxJobItems = %d, %v; want 100", got.MaxJobItems, err)
 	}
 }
 
@@ -160,6 +170,10 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		{name: "OMDI_PUBLIC_URL", value: "https://omdi.example.com/%zz"},
 		{name: "OMDI_MAX_QUEUED_JOBS", value: "-5"},
 		{name: "OMDI_MAX_QUEUED_JOBS", value: "1001"},
+		{name: "OMDI_MAX_JOB_ITEMS", value: "0"},
+		{name: "OMDI_MAX_JOB_ITEMS", value: "101"},
+		{name: "OMDI_MAX_JOB_ITEMS", value: "+20"},
+		{name: "OMDI_MAX_JOB_ITEMS", value: "secret-number"},
 	}
 
 	for _, tt := range tests {
@@ -167,6 +181,10 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 			_, err := Load(lookupFrom(map[string]string{tt.name: tt.value}))
 			if err == nil || !strings.Contains(err.Error(), tt.name) {
 				t.Fatalf("Load() error = %v; want error naming %s", err, tt.name)
+			}
+			// The lower-bound value appears in the documented upper bound, 100.
+			if tt.name == "OMDI_MAX_JOB_ITEMS" && tt.value == "0" {
+				return
 			}
 			if strings.TrimSpace(tt.value) != "" && strings.Contains(err.Error(), strings.TrimSpace(tt.value)) {
 				t.Fatalf("Load() leaked input in error: %v", err)

@@ -66,6 +66,7 @@ Unset variables use their defaults. A variable that is set but empty, surrounded
 | `OMDI_FFPROBE_PATH` | `/opt/ffmpeg/bin/ffprobe` | Absolute, clean path. |
 | `OMDI_PUBLIC_URL` | `http://localhost:8080` | Absolute `http`/`https` URL without user info, query, or fragment; base of download links. |
 | `OMDI_MAX_QUEUED_JOBS` | `10` | Integer 1–1000; queued plus running jobs allowed per API key. |
+| `OMDI_MAX_JOB_ITEMS` | `20` | Integer 1–100; maximum media items per job. |
 
 
 ## API keys

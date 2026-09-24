@@ -33,6 +33,7 @@ type Settings struct {
 	JobTimeout   time.Duration
 	MaxJobBytes  int64
 	MinFreeBytes int64
+	MaxJobItems  int
 }
 
 // Worker claims queued jobs from the store and runs them through the extractor.
@@ -153,6 +154,7 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 		Platform: j.Platform,
 		WorkDir:  workDir,
 		MaxBytes: w.settings.MaxJobBytes,
+		MaxItems: w.settings.MaxJobItems,
 	})
 	switch cause := context.Cause(jobCtx); {
 	case ctx.Err() != nil, errors.Is(cause, errCanceled):

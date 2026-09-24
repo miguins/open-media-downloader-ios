@@ -16,6 +16,7 @@ type Request struct {
 	Platform string
 	WorkDir  string
 	MaxBytes int64
+	MaxItems int
 }
 
 // File is one output the extractor wrote inside WorkDir. Both fields are untrusted.

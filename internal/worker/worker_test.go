@@ -75,7 +75,7 @@ func newFixture(t *testing.T, ext Extractor, settings Settings) *fixture {
 }
 
 func defaultSettings() Settings {
-	return Settings{JobTimeout: time.Minute, MaxJobBytes: 1 << 20, MinFreeBytes: 0}
+	return Settings{JobTimeout: time.Minute, MaxJobBytes: 1 << 20, MinFreeBytes: 0, MaxJobItems: 20}
 }
 
 func (f *fixture) enqueue(t *testing.T) job.Job {
@@ -132,6 +132,9 @@ func TestRunOnceSucceeds(t *testing.T) {
 	}
 	if got.URL != j.SourceURL || got.Platform != "vimeo" || got.MaxBytes != 1<<20 || got.WorkDir == "" {
 		t.Fatalf("extractor request = %#v", got)
+	}
+	if got.MaxItems != 20 {
+		t.Fatalf("extractor MaxItems = %d; want 20", got.MaxItems)
 	}
 	done := f.job(t, j.ID)
 	if done.Status != job.StatusSucceeded || done.StartedAt.IsZero() || done.FinishedAt.IsZero() {

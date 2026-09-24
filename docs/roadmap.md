@@ -6,7 +6,7 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 2 — Job lifecycle is complete. Phase 3 has not started.**
+**Phase 3 — Real extractors is in progress. Milestone 1 is active.**
 
 The next development effort is a Superpowers design and implementation plan for **Phase 3 — Real extractors**, beginning with the `yt-dlp` adapter behind the Phase 2 `Extractor` boundary and extractor egress control.
 
@@ -52,7 +52,7 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 
 ## Phase 3 — Real extractors
 
-**Status: Planned — next**
+**Status: In progress**
 
 - `yt-dlp` adapter.
 - `ffprobe` metadata inspection.

@@ -114,6 +114,7 @@ func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog
 		JobTimeout:   cfg.JobTimeout,
 		MaxJobBytes:  cfg.MaxJobBytes,
 		MinFreeBytes: cfg.MinFreeBytes,
+		MaxJobItems:  cfg.MaxJobItems,
 	}, logger)
 	checker := readiness.New(
 		readiness.Database(st),

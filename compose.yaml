@@ -30,6 +30,7 @@ services:
       OMDI_FFPROBE_PATH:
       OMDI_PUBLIC_URL:
       OMDI_MAX_QUEUED_JOBS:
+      OMDI_MAX_JOB_ITEMS:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

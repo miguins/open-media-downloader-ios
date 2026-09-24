@@ -68,10 +68,7 @@ func discoverGallery(dir string, maxItems int) ([]string, error) {
 		if entry.IsDir() || match == nil || !secureRegular(filepath.Join(dir, entry.Name())) {
 			return nil, ErrExtractionFailed
 		}
-		n, err := strconv.Atoi(match[1])
-		if err != nil {
-			return nil, ErrExtractionFailed
-		}
+		n, _ := strconv.Atoi(match[1]) // The anchored expression permits exactly three decimal digits.
 		items = append(items, numbered{entry.Name(), n})
 	}
 	if len(items) == 0 {

@@ -1,0 +1,9 @@
+services:
+  app:
+    command:
+      - sh
+      - -ec
+      - >-
+        mkdir -p "$$GOTMPDIR";
+        go build -tags=omdi_testextractor -trimpath -o /home/omdi/.cache/go-build/omdi-dev ./cmd/omdi;
+        exec /home/omdi/.cache/go-build/omdi-dev serve

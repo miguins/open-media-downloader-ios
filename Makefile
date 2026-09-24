@@ -1,11 +1,12 @@
 COMPOSE := docker compose
+COLLECTION_COMPOSE := $(COMPOSE) -f compose.yaml -f docker/compose.collection.yaml
 TOOLS_RUN := $(COMPOSE) run --rm --no-deps tools
 APP_BINARY := /home/omdi/.cache/go-build/omdi-dev
 APP_RUN := $(COMPOSE) run --rm --no-deps -T
 APP_BUILD := mkdir -p "$$GOTMPDIR"; go build -trimpath -o $(APP_BINARY) ./cmd/omdi
 TRIVY_IMAGE := aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
-.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke compose-up compose-down key-create key-list key-revoke job-list job-delete job-purge collection-test ci
+.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke compose-check compose-up compose-down key-create key-list key-revoke job-list job-delete job-purge collection-test ci
 
 bootstrap:
 	command -v docker >/dev/null
@@ -47,6 +48,9 @@ image-scan: docker-build
 smoke: docker-build
 	@set -eu; container_id=$$(docker run --rm --detach omdi:local); trap 'docker stop "$$container_id" >/dev/null 2>&1 || true' EXIT INT TERM; attempts=0; until docker exec "$$container_id" python3 -c 'import json, urllib.request; response = urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=2); assert response.status == 200; assert json.load(response) == {"status": "ok"}' >/dev/null 2>&1; do attempts=$$((attempts + 1)); test "$$attempts" -lt 30; sleep 1; done
 
+compose-check:
+	sh scripts/check-compose.sh
+
 compose-up:
 	$(COMPOSE) up --build
 
@@ -86,14 +90,14 @@ collection-test:
 	OMDI_API_KEY=; export OMDI_API_KEY; \
 	cleanup() { \
 		if [ -n "$$OMDI_API_KEY" ]; then \
-			$(COMPOSE) exec -T app $(APP_BINARY) keys revoke "$$(echo "$$OMDI_API_KEY" | cut -d_ -f2)" >/dev/null 2>&1 || true; \
+			$(COLLECTION_COMPOSE) exec -T app $(APP_BINARY) keys revoke "$$(echo "$$OMDI_API_KEY" | cut -d_ -f2)" >/dev/null 2>&1 || true; \
 		fi; \
-		$(COMPOSE) down --remove-orphans; \
+		$(COLLECTION_COMPOSE) down --remove-orphans; \
 	}; \
 	trap cleanup EXIT INT TERM; \
-	$(COMPOSE) up --build --detach --wait app; \
-	OMDI_API_KEY=$$($(COMPOSE) exec -T app $(APP_BINARY) keys create --name "collection-test-$$(date +%s)"); \
-	$(COMPOSE) run --rm bruno
+	$(COLLECTION_COMPOSE) up --build --detach --wait app; \
+	OMDI_API_KEY=$$($(COLLECTION_COMPOSE) exec -T app $(APP_BINARY) keys create --name "collection-test-$$(date +%s)"); \
+	$(COLLECTION_COMPOSE) run --rm bruno
 
 ci:
 	$(MAKE) fmt-check
@@ -103,5 +107,6 @@ ci:
 	$(MAKE) vuln
 	$(MAKE) secret-scan
 	$(MAKE) build
+	$(MAKE) compose-check
 	$(MAKE) docker-build smoke image-scan
 	$(MAKE) collection-test

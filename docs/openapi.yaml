@@ -1,7 +1,7 @@
 openapi: 3.2.1
 info:
   title: OpenMediaDownloaderIOS API
-  version: 0.2.0
+  version: 0.3.0
 servers:
   - url: http://localhost:8080
 paths:
@@ -67,8 +67,9 @@ paths:
       operationId: createJob
       summary: Queue a download job
       description: >-
-        Normalizes the URL and checks it against the allowed platforms before queuing. Each
-        API key may have a limited number of queued or running jobs.
+        Normalizes one public post URL and checks it against the allowed platforms before
+        queuing. Profiles, channels, playlists, feeds, and collections are rejected. Each API
+        key may have a limited number of queued or running jobs.
       security:
         - apiKey: []
       requestBody:
@@ -83,7 +84,7 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: Public HTTPS media URL on an allowed platform.
+                  description: One public post on an allowed platform; profiles, channels, playlists, feeds, and collections are rejected.
               additionalProperties: false
             example:
               url: https://vimeo.com/123
@@ -125,8 +126,8 @@ paths:
       operationId: getJob
       summary: Get a job
       description: >-
-        Returns the job. For succeeded jobs, every call issues fresh download links and
-        invalidates links returned earlier for the same items.
+        Returns the job. A succeeded carousel job has several ordered items. Every call issues
+        fresh download links and invalidates links returned earlier for the same items.
       security:
         - apiKey: []
       responses:

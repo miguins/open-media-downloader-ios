@@ -85,6 +85,9 @@ func (m *MediaTools) remux(ctx context.Context, workDir string, input Inspection
 	if err := os.Remove(filepath.Join(workDir, input.Name)); err != nil {
 		return Inspection{}, errors.New("extractor: replace remux input")
 	}
+	if _, err := os.Lstat(destinationPath); !errors.Is(err, os.ErrNotExist) {
+		return Inspection{}, errors.New("extractor: remux destination unavailable")
+	}
 	if err := os.Rename(temporaryPath, destinationPath); err != nil {
 		return Inspection{}, errors.New("extractor: install remux output")
 	}

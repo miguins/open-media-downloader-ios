@@ -50,4 +50,4 @@ settings:
 docs: |-
   # jobs
 
-  Queues a download job for a public URL on an allowed platform. Requires `Authorization: Bearer <API key>`.
+  Queues a download job for one public post on an allowed platform. Requires `Authorization: Bearer <API key>`.

@@ -164,6 +164,49 @@ func TestKeysLifecycle(t *testing.T) {
 	}
 }
 
+func TestKeysPurge(t *testing.T) {
+	c := newCLI(t)
+	ctx := context.Background()
+	_, revokedKey, _ := c.run(ctx, "keys", "create", "--name", "old")
+	revokedID, _, _ := auth.Parse(strings.TrimSpace(revokedKey))
+	_, activeKey, _ := c.run(ctx, "keys", "create", "--name", "phone")
+	activeID, _, _ := auth.Parse(strings.TrimSpace(activeKey))
+
+	st, err := store.Open(ctx, c.env["OMDI_DATA_DIR"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	revokedJob := job.New(revokedID, "https://vimeo.com/1", "vimeo", time.Now().UTC(), time.Hour)
+	if err := st.CreateJob(ctx, revokedJob); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	jobDir := filepath.Join(c.env["OMDI_DATA_DIR"], "jobs", revokedJob.ID)
+	if err := os.MkdirAll(jobDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := c.run(ctx, "keys", "revoke", revokedID); code != 0 {
+		t.Fatalf("keys revoke = %d", code)
+	}
+
+	for _, args := range [][]string{{"keys", "purge"}, {"keys", "purge", "--yes", "extra"}, {"keys", "purge", "--no"}} {
+		if code, _, _ := c.run(ctx, args...); code != 2 {
+			t.Fatalf("%v = %d; want 2", args, code)
+		}
+	}
+	code, out, stderr := c.run(ctx, "keys", "purge", "--yes")
+	if code != 0 || out != "purged 1 revoked keys and 1 jobs\n" {
+		t.Fatalf("keys purge = %d, %q, %s", code, out, stderr)
+	}
+	if _, err := os.Stat(jobDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("job directory remains: %v", err)
+	}
+	_, list, _ := c.run(ctx, "keys", "list")
+	if strings.Contains(list, revokedID) || !strings.Contains(list, activeID) {
+		t.Fatalf("keys list after purge:\n%s", list)
+	}
+}
+
 func TestJobsCommands(t *testing.T) {
 	c := newCLI(t)
 	ctx := context.Background()

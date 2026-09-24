@@ -83,6 +83,54 @@ func (s *Store) RevokeAPIKey(ctx context.Context, id string, now time.Time) erro
 	return err
 }
 
+// PurgeRevokedAPIKeys deletes every revoked API key and all of its jobs, canceling queued and
+// running ones first. It returns the number of deleted keys and the deleted job IDs so their
+// files can be removed.
+func (s *Store) PurgeRevokedAPIKeys(ctx context.Context, now time.Time) (int64, []string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, nil, fmt.Errorf("store: purge revoked API keys: %w", err)
+	}
+	keys, ids, err := purgeRevokedAPIKeys(ctx, tx, now)
+	if err != nil {
+		return 0, nil, errors.Join(err, tx.Rollback())
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, nil, fmt.Errorf("store: purge revoked API keys: %w", err)
+	}
+
+	return keys, ids, nil
+}
+
+func purgeRevokedAPIKeys(ctx context.Context, tx *sql.Tx, now time.Time) (int64, []string, error) {
+	const revoked = "SELECT id FROM api_keys WHERE revoked_at IS NOT NULL"
+	// Cancel first so a worker polling the row observes cancellation even if it reads before the delete commits.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE jobs SET status = 'canceled', error_code = NULL, updated_at = ?, finished_at = ?
+		WHERE owner_id IN (`+revoked+`) AND status IN ('queued', 'running')`,
+		toMillis(now), toMillis(now)); err != nil {
+		return 0, nil, fmt.Errorf("store: purge revoked API keys: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, "DELETE FROM jobs WHERE owner_id IN ("+revoked+") RETURNING id")
+	if err != nil {
+		return 0, nil, fmt.Errorf("store: purge revoked API keys: %w", err)
+	}
+	ids, err := scanIDs(rows)
+	if err != nil {
+		return 0, nil, err
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM api_keys WHERE revoked_at IS NOT NULL")
+	if err != nil {
+		return 0, nil, fmt.Errorf("store: purge revoked API keys: %w", err)
+	}
+	keys, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil, fmt.Errorf("store: purge revoked API keys: %w", err)
+	}
+
+	return keys, ids, nil
+}
+
 // TouchAPIKey records that the key was used at now. It returns ErrNotFound for unknown IDs.
 func (s *Store) TouchAPIKey(ctx context.Context, id string, now time.Time) error {
 	err := requireAffected(s.db.ExecContext(ctx,

@@ -77,9 +77,10 @@ API keys have the form `omdi_<id>_<secret>`. Only a SHA-256 hash of the secret i
 make key-create NAME=my-phone
 make key-list
 make key-revoke ID=<id>
+make key-purge            # deletes every revoked key with all of its jobs and files
 ```
 
-Names contain 1–64 letters, digits, `.`, `_`, or `-`. Clients send keys as `Authorization: Bearer <key>`; query-string keys are never accepted.
+Revoked keys stay listed until `make key-purge` removes them. Names contain 1–64 letters, digits, `.`, `_`, or `-`. Clients send keys as `Authorization: Bearer <key>`; query-string keys are never accepted.
 
 ## Jobs and downloads
 
@@ -142,6 +143,7 @@ make collection-test
 | `make key-create NAME=...` | Create an API key in the Compose data volume and print it once. |
 | `make key-list` | List API keys without secrets. |
 | `make key-revoke ID=...` | Revoke an API key. |
+| `make key-purge` | Delete every revoked API key with all of its jobs and files, including running jobs. |
 | `make job-list` | List jobs without their source URLs. |
 | `make job-delete ID=...` | Delete a job that is not running, with its files. |
 | `make job-purge [OWNER=...]` | Remove every job, or one key's jobs, including running ones. |

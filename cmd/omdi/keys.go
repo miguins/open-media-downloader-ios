@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/miguins/open-media-downloader-ios/internal/auth"
+	"github.com/miguins/open-media-downloader-ios/internal/config"
 	"github.com/miguins/open-media-downloader-ios/internal/id"
+	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
 
@@ -32,6 +34,14 @@ func parseKeysCommand(args []string) (keysCommand, bool) {
 		return keysCommand{action: "create", arg: *name}, true
 	case "list":
 		return keysCommand{action: "list"}, len(args) == 1
+	case "purge":
+		flags := newFlagSet("purge")
+		confirmed := flags.Bool("yes", false, "confirm")
+		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || !*confirmed {
+			return keysCommand{}, false
+		}
+
+		return keysCommand{action: "purge"}, true
 	case "revoke":
 		if len(args) != 2 {
 			return keysCommand{}, false
@@ -43,9 +53,11 @@ func parseKeysCommand(args []string) (keysCommand, bool) {
 	}
 }
 
-func (c keysCommand) run(ctx context.Context, st *store.Store, stdout io.Writer, logger *slog.Logger) int {
+func (c keysCommand) run(ctx context.Context, cfg config.Config, st *store.Store, stdout io.Writer, logger *slog.Logger) int {
 	now := time.Now().UTC()
 	switch c.action {
+	case "purge":
+		return purgeRevokedKeys(ctx, cfg, st, now, stdout, logger)
 	case "create":
 		plaintext, record := auth.Generate(c.arg, now)
 		if err := st.CreateAPIKey(ctx, record); err != nil {
@@ -82,6 +94,37 @@ func (c keysCommand) run(ctx context.Context, st *store.Store, stdout io.Writer,
 
 		return 0
 	}
+}
+
+// purgeRevokedKeys deletes every revoked key with all of its jobs and job files. A worker running
+// one of those jobs observes the change within a second and discards its output.
+func purgeRevokedKeys(ctx context.Context, cfg config.Config, st *store.Store, now time.Time, stdout io.Writer, logger *slog.Logger) int {
+	layout, err := storage.New(cfg.DataDir)
+	if err != nil {
+		logger.Error("prepare storage", "error", err)
+
+		return 1
+	}
+	keys, ids, err := st.PurgeRevokedAPIKeys(ctx, now)
+	if err != nil {
+		logger.Error("purge revoked API keys", "error", err)
+
+		return 1
+	}
+	failed := 0
+	for _, jobID := range ids {
+		if err := layout.RemoveJob(jobID); err != nil {
+			failed++
+		}
+	}
+	_, _ = fmt.Fprintf(stdout, "purged %d revoked keys and %d jobs\n", keys, len(ids))
+	if failed > 0 {
+		logger.Error("some job files could not be removed; the server removes them on its next sweep", "count", failed)
+
+		return 1
+	}
+
+	return 0
 }
 
 func listKeys(ctx context.Context, st *store.Store, stdout io.Writer, logger *slog.Logger) int {

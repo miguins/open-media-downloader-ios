@@ -21,7 +21,7 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/worker"
 )
 
-const usage = "usage: omdi serve | omdi keys create --name <name> | omdi keys list | omdi keys revoke <id> | " +
+const usage = "usage: omdi serve | omdi keys create --name <name> | omdi keys list | omdi keys revoke <id> | omdi keys purge --yes | " +
 	"omdi jobs list [--owner <key-id>] [--status <status>] | omdi jobs delete <id> | omdi jobs purge --yes [--owner <key-id>]"
 
 func main() {
@@ -46,8 +46,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 			return 2
 		}
 
-		return withStore(ctx, logger, lookup, func(_ config.Config, st *store.Store) int {
-			return command.run(ctx, st, stdout, logger)
+		return withStore(ctx, logger, lookup, func(cfg config.Config, st *store.Store) int {
+			return command.run(ctx, cfg, st, stdout, logger)
 		})
 	case len(args) >= 2 && args[0] == "jobs":
 		command, ok := parseJobsCommand(args[1:])

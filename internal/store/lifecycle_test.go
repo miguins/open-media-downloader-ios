@@ -235,6 +235,49 @@ func TestPurgeJobs(t *testing.T) {
 	}
 }
 
+func TestPurgeRevokedAPIKeys(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	createTestKey(t, s, "revoked", "revoked")
+	createTestKey(t, s, "active", "active")
+	createTestKey(t, s, "unused", "unused")
+	queued := createJobAt(t, s, "revoked", testNow)
+	running := createJobAt(t, s, "revoked", testNow)
+	transitionJob(t, s, &running, job.StatusRunning, "")
+	item := job.Item{ID: "item1", JobID: queued.ID, FileName: "a.mp4", MediaType: "video/mp4", CreatedAt: testNow}
+	if err := s.CreateItem(ctx, item); err != nil {
+		t.Fatal(err)
+	}
+	token := job.DownloadToken{Hash: []byte("token"), ItemID: item.ID, OwnerID: "revoked", CreatedAt: testNow, ExpiresAt: testNow.Add(time.Minute)}
+	if err := s.CreateDownloadToken(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	kept := createJobAt(t, s, "active", testNow)
+	for _, id := range []string{"revoked", "unused"} {
+		if err := s.RevokeAPIKey(ctx, id, testNow); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	keys, ids, err := s.PurgeRevokedAPIKeys(ctx, testNow)
+	sort.Strings(ids)
+	want := []string{queued.ID, running.ID}
+	sort.Strings(want)
+	if err != nil || keys != 2 || !reflect.DeepEqual(ids, want) {
+		t.Fatalf("PurgeRevokedAPIKeys() = %d, %v, %v; want 2, %v", keys, ids, err, want)
+	}
+	remaining, err := s.APIKeys(ctx)
+	if err != nil || len(remaining) != 1 || remaining[0].ID != "active" {
+		t.Fatalf("APIKeys() = %v, %v", remaining, err)
+	}
+	if exists, _ := s.JobExists(ctx, kept.ID); !exists {
+		t.Fatal("PurgeRevokedAPIKeys() removed an active key's job")
+	}
+	if keys, ids, err := s.PurgeRevokedAPIKeys(ctx, testNow); err != nil || keys != 0 || len(ids) != 0 {
+		t.Fatalf("PurgeRevokedAPIKeys(empty) = %d, %v, %v", keys, ids, err)
+	}
+}
+
 func TestExpiredJobsAndRecovery(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
@@ -313,6 +356,7 @@ func TestLifecycleQueriesFailAfterClose(t *testing.T) {
 	_, checks["ActiveJobCount"] = s.ActiveJobCount(ctx, "owner")
 	_, checks["Jobs"] = s.Jobs(ctx, JobFilter{})
 	_, checks["PurgeJobs"] = s.PurgeJobs(ctx, "", testNow)
+	_, _, checks["PurgeRevokedAPIKeys"] = s.PurgeRevokedAPIKeys(ctx, testNow)
 	_, checks["ExpiredJobIDs"] = s.ExpiredJobIDs(ctx, testNow)
 	_, checks["FailRunningJobs"] = s.FailRunningJobs(ctx, testNow)
 	_, checks["Item"] = s.Item(ctx, "item")

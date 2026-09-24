@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+// Stable extraction failures contain no untrusted diagnostics.
+var (
+	ErrTooLarge         = errors.New("extractor: resource limit exceeded")
+	ErrExtractionFailed = errors.New("extractor: extraction failed")
+)
+
 // Request describes one extraction. WorkDir is a private, empty directory the extractor may write to.
 type Request struct {
 	URL      string

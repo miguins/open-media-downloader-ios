@@ -8,7 +8,7 @@ Phase 3 is implemented. The service combines the authenticated job API, SQLite q
 
 One Go binary owns the HTTP server and background work. `cmd/omdi` composes configuration, storage, URL policy, the real extractor, worker, cleaner, and readiness checks. Package boundaries remain focused: `internal/api` owns HTTP contracts, `internal/store` persistence, `internal/storage` private file ingestion, `internal/urlpolicy` normalization and egress policy, `internal/extractor` tools and routing, and `internal/worker` job execution.
 
-Production uses `extractor.Real`. YouTube, Vimeo, and TikTok route statically to the `yt-dlp` adapter; Instagram, X, and Reddit route to `gallery-dl`. The Bruno collection builds the existing fake extractor only with the private `omdi_testextractor` build tag, keeping required executable contracts offline without adding a runtime switch.
+Production uses `extractor.Real`. YouTube, Vimeo, TikTok, Instagram, and Reddit route statically to the `yt-dlp` adapter; X routes to `gallery-dl`. Each platform uses the tool that extracts it without credentials. Instagram runs `yt-dlp` in a post-media mode that also delivers photo entries through their thumbnails. The adapter hands Vimeo and Reddit URLs to `yt-dlp` in their logged-out forms, the Vimeo embed player and the Reddit comments route, without changing the stored job URL. The Bruno collection builds the existing fake extractor only with the private `omdi_testextractor` build tag, keeping required executable contracts offline without adding a runtime switch.
 
 ## Data flow
 

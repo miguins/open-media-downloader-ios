@@ -92,7 +92,7 @@ Revoked keys stay listed until `make key-purge` removes them. Names contain 1–
 KEY=omdi_...   # from make key-create
 curl -s -X POST http://localhost:8080/v1/jobs \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"url":"https://vimeo.com/76979871"}'
+  -d '{"url":"https://vimeo.com/7809605"}'
 curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
 ```
 
@@ -101,7 +101,7 @@ curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
 - `DELETE /v1/jobs/{id}` cancels a queued or running job.
 - `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`.
 
-Each job accepts exactly one public post URL; profiles, channels, playlists, feeds, and collections are rejected. YouTube, Vimeo, and TikTok route through `yt-dlp`; Instagram, X, and Reddit route through `gallery-dl`. A carousel remains one job with up to `OMDI_MAX_JOB_ITEMS` ordered results (20 by default). Outputs are compatibility-first MP4/M4A, MP3, JPEG, PNG, WebP, GIF, or QuickTime media. FFmpeg is used only for local H.264/AAC stream-copy remuxing; incompatible codecs are rejected instead of transcoded.
+Each job accepts exactly one public post URL; profiles, channels, playlists, feeds, and collections are rejected. YouTube, Vimeo, TikTok, Instagram, and Reddit route through `yt-dlp`; X routes through `gallery-dl`. Instagram links that start with the account handle, such as `/{handle}/p/{shortcode}/`, are accepted and stored without the handle. A carousel remains one job with up to `OMDI_MAX_JOB_ITEMS` ordered results (20 by default). Outputs are compatibility-first MP4/M4A, MP3, JPEG, PNG, WebP, GIF, or QuickTime media. FFmpeg is used only for local H.264/AAC stream-copy remuxing; incompatible codecs are rejected instead of transcoded.
 
 Jobs, files, and tokens are removed automatically after `OMDI_JOB_RETENTION`. Operators can manage jobs from the CLI:
 
@@ -184,7 +184,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed`. When this was verified on 2026-09-24, YouTube and TikTok worked anonymously; Instagram redirected to its login page, X returned no guest results, Reddit blocked the test network, and the tested Vimeo video required a logged-in web client. Results vary by post, network, and platform policy. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
+There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed`. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next, followed by Phase 5 bulk ZIP downloads for multi-item jobs. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

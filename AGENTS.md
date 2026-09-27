@@ -15,7 +15,7 @@
 - Write all code, comments, documentation, API descriptions, and messages in English.
 - Follow SOLID and idiomatic Go. Prefer the standard library, small packages, explicit dependencies, and simple concrete types; add interfaces only at real substitution boundaries.
 - Use Superpowers for specification-driven development and TDD for every behavior change.
-- Maintain at least 90% unit-test coverage. Security-critical code requires 100% coverage; `scripts/check-coverage.sh` enforces it for `internal/auth`, `internal/storage`, and `internal/urlpolicy`, and new security-critical packages must be added there.
+- Maintain at least 90% unit-test coverage. Security-critical code requires 100% coverage; `scripts/check-coverage.sh` enforces it for `internal/auth`, `internal/storage`, `internal/urlpolicy`, and `internal/extractor`, and new security-critical packages must be added there.
 - Keep Go unit tests beside their packages; reserve root `tests/` for integration and end-to-end tests.
 - Use only the newest stable dependency and tool releases. Never use alpha, beta, RC, nightly, preview, or floating versions.
 - Use `make compose-up` (attached), `make compose-up-detached`, and `make compose-down` for the local service. `make collection-test`, `make real-smoke`, and therefore `make ci` stop the Compose service when they finish; restart it with `make compose-up-detached` if it was running. Use the other `Makefile` targets for formatting, tests, coverage, linting, security checks, and builds; run `make ci` before handoff when Docker is available.

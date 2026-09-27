@@ -39,6 +39,18 @@ A review on 2026-09-24 ran the pinned tools against real media and found defects
 
 Real-network verification on 2026-09-24: `make real-smoke` passed for a public YouTube video, and a public TikTok video completed as one `video/mp4` item. Instagram redirected anonymous access to its login page. X returned no guest results. Reddit blocked the test network. The tested Vimeo video required a logged-in web client. These are platform access policies. Supporting them would require the credential support that Phase 3 excludes.
 
+### Anonymous-access corrections
+
+A follow-up review on 2026-09-27 showed that most of those failures came from tool selection and format handling, not from a login requirement. The public posts used for this review are only verification inputs and are not recorded. It corrected, without adding credentials:
+
+- `gallery-dl` receives Instagram's login redirect and is blocked by Reddit, while `yt-dlp` extracts both through their logged-out web endpoints. Instagram and Reddit now route to `yt-dlp`; X stays on `gallery-dl`, which returns both photos and videos of a post, while `yt-dlp` returns only its video.
+- Instagram and Vimeo leave the codecs of progressive MP4 formats undeclared, so the format selector chose audio only or nothing. It now accepts a progressive MP4 whose codecs are undeclared or compatible after the declared H.264/AAC choices, and inspection decides from the actual streams.
+- `yt-dlp` exposes an Instagram photo only as the thumbnail of an entry without formats. Instagram runs in a post-media mode that writes entry thumbnails, bounds the carousel to `OMDI_MAX_JOB_ITEMS + 1` entries, skips the temporary path that would hold a photo's thumbnail back, accepts exit status 1 only when every error is a photo entry without formats, and drops the thumbnail of a video entry.
+- Vimeo's web client requires a login and its embed player does not, so `vimeo.com/{id}` is extracted through `player.vimeo.com/video/{id}`. Reddit `redd.it/{id}` and `/gallery/{id}` URLs are extracted through `/comments/{id}/`, the only form `yt-dlp` recognizes. The stored job URL does not change.
+- The URL policy accepts Instagram links that start with the account handle, as the app shares them, and stores them without the handle.
+
+Real-network verification on 2026-09-27 through the API: a single Instagram photo, a photo carousel, a reel, and a mixed carousel produced one JPEG, three JPEGs, one MP4, and a JPEG followed by an MP4. A public X photo post and video post, a Reddit-hosted video submitted by permalink and by `redd.it` short link, an embeddable Vimeo video, and YouTube and TikTok regression videos each completed with the expected item. A Reddit image post and an embed-restricted Vimeo video failed as `extraction_failed`, as documented. `make real-smoke` passed for Instagram, Reddit, Vimeo, and X. `make ci` passed at 96.5% total coverage, with `internal/auth`, `internal/storage`, `internal/urlpolicy`, and `internal/extractor` at 100%.
+
 ## Deferred work
 
 The iOS Shortcut package and remaining Phase 4 packaging and documentation work remain deferred.

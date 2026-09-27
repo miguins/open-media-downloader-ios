@@ -43,9 +43,9 @@ func (r *Real) Extract(ctx context.Context, request Request) ([]File, error) {
 	defer func() { _ = session.Close() }()
 	var files []File
 	switch request.Platform {
-	case "youtube", "vimeo", "tiktok":
+	case "youtube", "vimeo", "tiktok", "instagram", "reddit":
 		files, err = r.ytdlp(ctx, request, session.URL())
-	case "instagram", "x", "reddit":
+	case "x":
 		files, err = r.gallery(ctx, request, session.URL())
 	default:
 		err = errors.New("extractor: unsupported platform")

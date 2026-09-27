@@ -29,7 +29,7 @@ func NewGalleryDL(path string, runner *Runner, media *MediaTools) *GalleryDL {
 
 // Extract downloads and validates one gallery-backed public post.
 func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL string) ([]File, error) {
-	if !validAdapterRequest(request, "instagram", "x", "reddit") || !validProxyURL(proxyURL) {
+	if !validAdapterRequest(request, "x") || !validProxyURL(proxyURL) {
 		return nil, errors.New("extractor: invalid adapter request")
 	}
 	args := []string{
@@ -65,31 +65,47 @@ func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL strin
 	return files, nil
 }
 
+type numberedEntry struct {
+	name   string
+	number int
+}
+
 func discoverGallery(dir string, maxItems int) ([]string, error) {
+	items, err := numberedEntries(dir)
+	if err != nil {
+		return nil, err
+	}
+	return orderedNames(items, maxItems)
+}
+
+// numberedEntries enumerates a work directory in which every entry must be a
+// top-level regular file named item-NNN.extension.
+func numberedEntries(dir string) ([]numberedEntry, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, errors.New("extractor: enumerate output")
 	}
-	type numbered struct {
-		name   string
-		number int
-	}
-	items := make([]numbered, 0, len(entries))
+	items := make([]numberedEntry, 0, len(entries))
 	for _, entry := range entries {
 		match := galleryName.FindStringSubmatch(entry.Name())
 		if entry.IsDir() || match == nil || !secureRegular(filepath.Join(dir, entry.Name())) {
 			return nil, ErrExtractionFailed
 		}
 		n, _ := strconv.Atoi(match[1]) // The anchored expression permits exactly three decimal digits.
-		items = append(items, numbered{entry.Name(), n})
+		items = append(items, numberedEntry{entry.Name(), n})
 	}
+	return items, nil
+}
+
+// orderedNames returns item names in source order, rejecting gaps and posts over the item limit.
+func orderedNames(items []numberedEntry, maxItems int) ([]string, error) {
 	if len(items) == 0 {
 		return nil, ErrExtractionFailed
 	}
 	if len(items) > maxItems {
 		return nil, ErrTooLarge
 	}
-	// Extractors number a single-media post 0 (Reddit) and carousel entries from 1.
+	// Extractors number a single-media post 0 and carousel entries from 1.
 	if len(items) == 1 && items[0].number == 0 {
 		return []string{items[0].name}, nil
 	}

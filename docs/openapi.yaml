@@ -1,7 +1,7 @@
 openapi: 3.2.1
 info:
   title: OpenMediaDownloaderIOS API
-  version: 0.3.0
+  version: 0.3.1
 servers:
   - url: http://localhost:8080
 paths:
@@ -84,7 +84,10 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: One public post on an allowed platform; profiles, channels, playlists, feeds, and collections are rejected.
+                  description: >-
+                    One public post on an allowed platform; profiles, channels, playlists, feeds, and
+                    collections are rejected. Tracking parameters are removed, and an Instagram post
+                    link that starts with the account handle is stored without the handle.
               additionalProperties: false
             example:
               url: https://vimeo.com/123

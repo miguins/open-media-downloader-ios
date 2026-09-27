@@ -19,3 +19,23 @@ func TestRealRoutesYouTube(t *testing.T) {
 		t.Fatalf("Extract = %v, called %v", err, called)
 	}
 }
+
+func TestRealRoutesEveryPlatform(t *testing.T) {
+	for platform, want := range map[string]string{
+		"youtube": "yt-dlp", "vimeo": "yt-dlp", "tiktok": "yt-dlp", "instagram": "yt-dlp", "reddit": "yt-dlp",
+		"x": "gallery-dl",
+	} {
+		var got []string
+		r := &Real{
+			beginSession: func(context.Context, int64) (proxySession, error) { return testSession{}, nil },
+			ytdlp:        func(context.Context, Request, string) ([]File, error) { got = append(got, "yt-dlp"); return nil, nil },
+			gallery: func(context.Context, Request, string) ([]File, error) {
+				got = append(got, "gallery-dl")
+				return nil, nil
+			},
+		}
+		if _, err := r.Extract(t.Context(), Request{Platform: platform, WorkDir: t.TempDir(), MaxBytes: 1, MaxItems: 1}); err != nil || len(got) != 1 || got[0] != want {
+			t.Errorf("%s routed to %v, error %v; want %s", platform, got, err, want)
+		}
+	}
+}

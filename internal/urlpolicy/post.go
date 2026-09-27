@@ -11,7 +11,7 @@ var (
 	youTubeShort  = regexp.MustCompile(`^/[A-Za-z0-9_-]+/?$`)
 	youTubeVideo  = regexp.MustCompile(`^/(shorts|live)/[A-Za-z0-9_-]+/?$`)
 	youTubeWatch  = regexp.MustCompile(`^/watch/?$`)
-	instagramPost = regexp.MustCompile(`^/(p|reel|reels|tv)/[A-Za-z0-9_-]+/?$`)
+	instagramPost = regexp.MustCompile(`^/(?:[A-Za-z0-9_][A-Za-z0-9._]{0,29}/)?((?:p|reel|reels|tv)/[A-Za-z0-9_-]+/?)$`)
 	tikTokShort   = regexp.MustCompile(`^/[A-Za-z0-9]+/?$`)
 	tikTokPost    = regexp.MustCompile(`^/(@[A-Za-z0-9_.]+/video/[0-9]+|t/[A-Za-z0-9]+)/?$`)
 	xPost         = regexp.MustCompile(`^/[A-Za-z0-9_]+/status/[0-9]+/?$`)
@@ -40,8 +40,15 @@ func normalizeYouTube(u *url.URL) error {
 	return nil
 }
 
+// normalizeInstagram also accepts the shared-link form that starts with the account
+// handle and removes the handle, so both forms store the same URL.
 func normalizeInstagram(u *url.URL) error {
-	return normalizePost(u, instagramPost)
+	if err := normalizePost(u, instagramPost); err != nil {
+		return err
+	}
+	u.Path = "/" + instagramPost.FindStringSubmatch(u.Path)[1]
+
+	return nil
 }
 
 func normalizeTikTok(u *url.URL) error {

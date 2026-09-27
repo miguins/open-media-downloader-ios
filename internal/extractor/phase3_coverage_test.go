@@ -339,7 +339,7 @@ func TestGalleryAdapterAndDiscovery(t *testing.T) {
 	regular(t, dir, "item-001.jpg")
 	media := NewMediaTools(probeTool(t, probeJSON("jpeg_pipe", "mjpeg", "")), "/bin/true", NewRunner())
 	g := NewGalleryDL("/bin/true", NewRunner(), media)
-	if files, err := g.Extract(t.Context(), adapterRequest(dir, "instagram", 1), "http://127.0.0.1:8080"); err != nil || len(files) != 1 {
+	if files, err := g.Extract(t.Context(), adapterRequest(dir, "x", 1), "http://127.0.0.1:8080"); err != nil || len(files) != 1 {
 		t.Fatalf("Extract = %#v, %v", files, err)
 	}
 	if _, err := g.Extract(t.Context(), adapterRequest(t.TempDir(), "bad", 1), "http://127.0.0.1:8080"); err == nil {
@@ -370,7 +370,10 @@ func TestGalleryAdapterAndDiscovery(t *testing.T) {
 	if _, err := discoverGallery(dir, 2); !errors.Is(err, ErrExtractionFailed) {
 		t.Fatalf("hostile = %v", err)
 	}
-	if _, err := g.Extract(t.Context(), adapterRequest(t.TempDir(), "reddit", 1), "http://127.0.0.1:8080"); !errors.Is(err, ErrExtractionFailed) {
+	if _, err := g.Extract(t.Context(), adapterRequest(t.TempDir(), "instagram", 1), "http://127.0.0.1:8080"); err == nil {
+		t.Fatal("gallery-dl accepted instagram")
+	}
+	if _, err := g.Extract(t.Context(), adapterRequest(t.TempDir(), "x", 1), "http://127.0.0.1:8080"); !errors.Is(err, ErrExtractionFailed) {
 		t.Fatalf("discovery = %v", err)
 	}
 	dir = t.TempDir()
@@ -397,7 +400,7 @@ func TestGalleryAdapterAndDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 	time.Sleep(time.Millisecond)
-	if _, err := g.Extract(ctx, adapterRequest(t.TempDir(), "reddit", 1), "http://127.0.0.1:8080"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := g.Extract(ctx, adapterRequest(t.TempDir(), "x", 1), "http://127.0.0.1:8080"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("deadline = %v", err)
 	}
 }
@@ -423,14 +426,14 @@ func TestRealMatrix(t *testing.T) {
 		gallery = true
 		return nil, ErrExtractionFailed
 	}}
-	_, err := r.Extract(t.Context(), adapterRequest(t.TempDir(), "reddit", 1))
+	_, err := r.Extract(t.Context(), adapterRequest(t.TempDir(), "x", 1))
 	if !errors.Is(err, ErrExtractionFailed) || !gallery || !closed {
 		t.Fatalf("route = %v %v %v", err, gallery, closed)
 	}
 	r.beginSession = func(context.Context, int64) (proxySession, error) {
 		return scriptedSession{err: urlpolicy.ErrEgressTooLarge}, nil
 	}
-	_, err = r.Extract(t.Context(), adapterRequest(t.TempDir(), "reddit", 1))
+	_, err = r.Extract(t.Context(), adapterRequest(t.TempDir(), "x", 1))
 	if !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("budget = %v", err)
 	}

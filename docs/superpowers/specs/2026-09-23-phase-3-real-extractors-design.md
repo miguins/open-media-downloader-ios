@@ -122,7 +122,7 @@ path shapes, with one non-empty identifier in every placeholder:
 | Platform | Accepted direct-post shapes |
 | --- | --- |
 | YouTube | `/watch?v={video}`, `/shorts/{video}`, `/live/{video}`, and `youtu.be/{video}` |
-| Instagram | `/p/{shortcode}`, `/reel/{shortcode}`, `/reels/{shortcode}`, and `/tv/{shortcode}` |
+| Instagram | `/p/{shortcode}`, `/reel/{shortcode}`, `/reels/{shortcode}`, and `/tv/{shortcode}`, optionally preceded by `/{handle}` |
 | TikTok | `/@{handle}/video/{numeric-id}` and official `vm.tiktok.com`, `vt.tiktok.com`, or `/t/{token}` short links |
 | X/Twitter | `/{handle}/status/{numeric-id}` and `/i/status/{numeric-id}` |
 | Reddit | `/r/{subreddit}/comments/{post-id}`, `/comments/{post-id}`, `/gallery/{post-id}`, and `redd.it/{post-id}` |
@@ -130,7 +130,9 @@ path shapes, with one non-empty identifier in every placeholder:
 
 An accepted path may have a trailing slash but no additional path that changes
 its resource type. Profile, channel, playlist, search, feed, collection, and all
-other routes are rejected. Identifier validation is ASCII and platform-specific;
+other routes are rejected. Instagram shares post links that start with the
+account handle, such as `/{handle}/p/{shortcode}`; the handle is removed during
+normalization, so both forms store the same handle-free URL. Identifier validation is ASCII and platform-specific;
 empty identifiers, encoded separators, dot segments, and duplicate identity
 parameters are rejected.
 
@@ -148,13 +150,16 @@ Routing is static and has no automatic fallback:
 
 | Platforms | Adapter |
 | --- | --- |
-| YouTube, Vimeo, TikTok | `yt-dlp` |
-| Instagram, X/Twitter, Reddit | `gallery-dl` |
+| YouTube, Vimeo, TikTok, Instagram, Reddit | `yt-dlp` |
+| X/Twitter | `gallery-dl` |
 
-This split gives video-oriented platforms to `yt-dlp` and post/carousel-oriented
-platforms to `gallery-dl`. An adapter failure does not invoke the other tool,
-which prevents duplicated downloads, inconsistent output, and unexpected
-resource consumption.
+Each platform uses the tool that extracts it without credentials. Real-network
+verification showed that `gallery-dl` receives Instagram's login redirect and is
+blocked by Reddit, while `yt-dlp` reaches both through their logged-out web
+endpoints. For X, `gallery-dl` returns both the photos and the videos of a post,
+while `yt-dlp` returns only its video. An adapter failure does not invoke the
+other tool, which prevents duplicated downloads, inconsistent output, and
+unexpected resource consumption.
 
 ## Egress Proxy
 
@@ -225,7 +230,9 @@ options that:
 
 - ignore all configuration and cache files;
 - disable credentials, cookies, `.netrc`, playlists, live streams, subtitles,
-  thumbnails, metadata sidecars, and generic URL extraction;
+  thumbnails, metadata sidecars, and generic URL extraction. The Instagram
+  post-media mode below is the only exception: it processes the submitted
+  post's own bounded entries and writes their thumbnails;
 - use the application proxy and configured FFmpeg path;
 - process only the submitted post without `--max-downloads`, which makes
   `yt-dlp` exit with status 101 after a successful download;
@@ -233,8 +240,12 @@ options that:
 - use a server-controlled output template;
 - prefer an iOS-compatible video/audio format and MP4 merge. Extractors name
   H.264 either `avc1.*` or `h264` and AAC either `mp4a.*` or `aac`, so the
-  selector matches both spellings. Video without a compatible audio track is
-  never selected;
+  selector matches both spellings. Video that declares no compatible audio
+  track is never selected. Instagram and Vimeo do not declare the codecs of
+  their progressive MP4 formats, so after the declared H.264/AAC choices the
+  selector accepts a progressive MP4 whose codecs are undeclared or compatible;
+  a format that declares an incompatible codec or no audio still never matches.
+  Inspection then decides from the actual streams;
 - skip a download whose declared size exceeds `OMDI_MAX_JOB_BYTES`.
 
 `yt-dlp` skips an oversized download with a successful exit and reports it only
@@ -244,6 +255,48 @@ the work directory, selects the expected server-named final entry, and rejects
 symlinks, subdirectories, auxiliary files, partial files, or multiple final
 outputs. Any FFmpeg child used by `yt-dlp` operates on locally downloaded files.
 
+The adapter passes some normalized URLs to `yt-dlp` in an equivalent form that
+its logged-out extraction supports. A Vimeo `/{numeric-id}` URL becomes
+`https://player.vimeo.com/video/{numeric-id}`, because the regular web client
+requires a login while the embed player does not; videos whose owners restrict
+embedding still fail. Reddit `redd.it/{post-id}` and `/gallery/{post-id}` URLs
+become `https://www.reddit.com/comments/{post-id}/`, because `yt-dlp` recognizes
+only the comments route. The stored job URL does not change.
+
+### Post-media mode
+
+Instagram posts can be a single photo, a single video, or a carousel that mixes
+both. `yt-dlp` extracts their logged-out metadata but treats a photo as a video
+entry without formats; the photo appears only as the entry's thumbnail. For
+Instagram, the adapter therefore replaces the single-video options with:
+
+- the submitted post's own entries, bounded to `OMDI_MAX_JOB_ITEMS + 1` like
+  `gallery-dl`, and no abort after one failed entry;
+- no failure for entries without formats, and the entry thumbnail written
+  beside each entry;
+- server-controlled names `item-{index}.{extension}`, where a carousel entry is
+  numbered from `001` and a single-media post is `000`;
+- no separate temporary path, because `yt-dlp` moves a thumbnail out of the
+  temporary path only after a successful media download, which a photo entry
+  never has;
+- a final `bv*+ba/b` fallback in the format selector, so an entry with any
+  format never ends without a download. An incompatible download is rejected by
+  inspection rather than replaced by its thumbnail.
+
+A photo entry therefore makes `yt-dlp` report `No video formats found!` and exit
+with status 1. The adapter accepts that status only when standard error contains
+at least one error line and every error line is exactly that Instagram marker;
+any other error, exit status, or diagnostic overflow fails the job as
+`extraction_failed`. Discovery then applies the `gallery-dl` numbering rules to
+the entries. Each index must hold either one file or exactly one `mp4` video
+with its thumbnail; the thumbnail of a video entry is not reported, so it is
+neither inspected nor ingested and is deleted with the work directory. Any
+other combination rejects the job.
+
+Reddit uses the single-video options. `yt-dlp` extracts only Reddit-hosted
+video: image and gallery posts link to hosts that require the disabled generic
+extractor and fail as `extraction_failed`.
+
 ## `gallery-dl` Adapter
 
 The adapter ignores default configuration, uses the application proxy for both
@@ -251,7 +304,7 @@ extraction and downloads, stores its cache in memory, and writes only
 server-named numbered entries in the work directory. Credentials, cookies,
 archives, postprocessors, and metadata sidecars are disabled. An empty
 extractor whitelist prevents child extractors, so external links in a post, such
-as a Reddit link post, are never followed.
+as a link post, are never followed. It serves X/Twitter.
 
 It requests at most `OMDI_MAX_JOB_ITEMS + 1` entries from the one submitted
 post. Finding the extra entry proves that the post exceeds the configured

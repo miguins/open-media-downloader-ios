@@ -12,7 +12,7 @@ http:
     type: json
     data: |-
       {
-        "url": "https://vimeo.com/76979871"
+        "url": "https://www.instagram.com/instagram/reel/DdwMu5VhCUn/?igsh=example"
       }
   auth:
     type: bearer
@@ -27,6 +27,8 @@ runtime:
         test("queues the normalized job", function () {
           const body = res.getBody();
           expect(body.status).to.equal("queued");
+          expect(body.url).to.equal("https://www.instagram.com/reel/DdwMu5VhCUn/");
+          expect(body.platform).to.equal("instagram");
           expect(body.error).to.equal(null);
           expect(res.getHeader("location")).to.equal("/v1/jobs/" + body.id);
         });
@@ -45,4 +47,4 @@ settings:
 docs: |-
   # jobs
 
-  Queues a download job for one public post on an allowed platform. Requires `Authorization: Bearer <API key>`.
+  Queues a download job for one public post on an allowed platform. Requires `Authorization: Bearer <API key>`. The example uses the account-handle link form that Instagram shares; the job stores it normalized, without the handle and tracking parameters.

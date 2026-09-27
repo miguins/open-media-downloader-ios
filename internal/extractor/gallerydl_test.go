@@ -37,7 +37,7 @@ func TestGalleryDLArgumentsAndOversizedSkip(t *testing.T) {
 	tool := testTool(t, `printf '%s\n' "$@" > '`+argsFile+`'
 printf '%s\n' '[downloader.http][warning] File size larger than allowed maximum (2 > 1)' >&2`)
 	media := NewMediaTools(probeTool(t, probeJSON("jpeg_pipe", "mjpeg", "")), "/bin/true", NewRunner())
-	if _, err := NewGalleryDL(tool, NewRunner(), media).Extract(t.Context(), adapterRequest(t.TempDir(), "reddit", 1), "http://127.0.0.1:8080"); !errors.Is(err, ErrTooLarge) {
+	if _, err := NewGalleryDL(tool, NewRunner(), media).Extract(t.Context(), adapterRequest(t.TempDir(), "x", 1), "http://127.0.0.1:8080"); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("error = %v", err)
 	}
 	raw, err := os.ReadFile(argsFile) //nolint:gosec // Path is under the test's temporary directory.

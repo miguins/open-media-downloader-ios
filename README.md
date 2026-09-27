@@ -16,6 +16,8 @@ cp .env.example .env
 make compose-up
 ```
 
+`make compose-up` stays attached and streams the service logs. Use `make compose-up-detached` to start the service in the background and return once it is healthy.
+
 In another shell:
 
 ```bash
@@ -139,8 +141,9 @@ make collection-test
 | `make smoke` | Validate `/healthz` inside the production image. |
 | `make real-smoke URL=...` | Optionally exercise real extraction and network access, then purge temporary state. |
 | `make compose-check` | Verify the application memory and PID limits. |
-| `make compose-up` | Start the development service with Compose. |
-| `make collection-test` | Run the Bruno collection against the Compose service. |
+| `make compose-up` | Start the development service with Compose, attached to its logs. `make dev` is an alias. |
+| `make compose-up-detached` | Start the development service in the background and wait until it is healthy. |
+| `make collection-test` | Run the Bruno collection against a Compose service built with the fake extractor, then stop it. |
 | `make compose-down` | Stop Compose services without deleting named data. |
 | `make key-create NAME=...` | Create an API key in the Compose data volume and print it once. |
 | `make key-list` | List API keys without secrets. |

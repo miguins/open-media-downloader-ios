@@ -6,7 +6,7 @@ APP_RUN := $(COMPOSE) run --rm --no-deps -T
 APP_BUILD := mkdir -p "$$GOTMPDIR"; go build -trimpath -o $(APP_BINARY) ./cmd/omdi
 TRIVY_IMAGE := aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
-.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check compose-up compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
+.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
 
 bootstrap:
 	command -v docker >/dev/null
@@ -58,6 +58,11 @@ compose-check:
 
 compose-up:
 	$(COMPOSE) up --build
+
+dev: compose-up
+
+compose-up-detached:
+	$(COMPOSE) up --build --detach --wait app
 
 compose-down:
 	$(COMPOSE) down --remove-orphans

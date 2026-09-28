@@ -18,6 +18,8 @@ services:
       GOTMPDIR: /home/omdi/.cache/go-build/tmp
       OMDI_HTTP_ADDR: "${OMDI_HTTP_ADDR-:8080}"
       OMDI_DATA_DIR:
+      OMDI_RESTORE_API_KEY_ON_STARTUP:
+      OMDI_API_KEY:
       OMDI_ALLOWED_PLATFORMS:
       OMDI_MAX_URL_LENGTH:
       OMDI_MAX_REQUEST_BYTES:

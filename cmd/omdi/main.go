@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/miguins/open-media-downloader-ios/internal/api"
 	"github.com/miguins/open-media-downloader-ios/internal/app"
@@ -91,6 +92,12 @@ func withStore(ctx context.Context, logger *slog.Logger, lookup func(string) (st
 }
 
 func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog.Logger) int {
+	if cfg.RestoreAPIKeyOnStartup {
+		if err := auth.RestoreAPIKey(ctx, st, cfg.APIKey, time.Now().UTC()); err != nil {
+			logger.Error("restore API key", "error", err)
+			return 1
+		}
+	}
 	layout, err := storage.New(cfg.DataDir)
 	if err != nil {
 		logger.Error("prepare storage", "error", err)

@@ -1,5 +1,7 @@
 services:
   app:
+    environment:
+      OMDI_RESTORE_API_KEY_ON_STARTUP: "false"
     command:
       - sh
       - -ec

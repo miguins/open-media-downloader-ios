@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/miguins/open-media-downloader-ios/internal/auth"
 	"github.com/miguins/open-media-downloader-ios/internal/urlpolicy"
 )
 
@@ -29,20 +30,22 @@ type Tools struct {
 
 // Config contains validated application configuration.
 type Config struct {
-	HTTPAddr         string
-	DataDir          string
-	AllowedPlatforms []string
-	MaxURLLength     int
-	MaxRequestBytes  int64
-	JobTimeout       time.Duration
-	MaxJobBytes      int64
-	MinFreeBytes     int64
-	JobRetention     time.Duration
-	TokenTTL         time.Duration
-	PublicURL        string
-	MaxQueuedJobs    int
-	MaxJobItems      int
-	Tools            Tools
+	RestoreAPIKeyOnStartup bool
+	APIKey                 string
+	HTTPAddr               string
+	DataDir                string
+	AllowedPlatforms       []string
+	MaxURLLength           int
+	MaxRequestBytes        int64
+	JobTimeout             time.Duration
+	MaxJobBytes            int64
+	MinFreeBytes           int64
+	JobRetention           time.Duration
+	TokenTTL               time.Duration
+	PublicURL              string
+	MaxQueuedJobs          int
+	MaxJobItems            int
+	Tools                  Tools
 }
 
 // loader reads variables and accumulates validation errors.
@@ -76,6 +79,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			FFprobe:   l.path("OMDI_FFPROBE_PATH", "/opt/ffmpeg/bin/ffprobe"),
 		},
 	}
+	cfg.RestoreAPIKeyOnStartup, cfg.APIKey = l.apiKeyRestoration()
 	if cfg.TokenTTL > 0 && cfg.JobRetention > 0 && cfg.TokenTTL > cfg.JobRetention {
 		l.fail("OMDI_TOKEN_TTL must not exceed OMDI_JOB_RETENTION")
 	}
@@ -87,6 +91,24 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func (l *loader) apiKeyRestoration() (bool, string) {
+	const toggle = "OMDI_RESTORE_API_KEY_ON_STARTUP"
+	value, present := l.value(toggle)
+	if !present || value == "false" {
+		return false, ""
+	}
+	if value != "true" {
+		l.fail(toggle + " must be true or false")
+		return false, ""
+	}
+	key, _ := l.lookup("OMDI_API_KEY")
+	if _, _, ok := auth.Parse(key); !ok {
+		l.fail("OMDI_API_KEY must contain a valid API key when " + toggle + " is true")
+		return false, ""
+	}
+	return true, key
 }
 
 func (l *loader) fail(message string) {

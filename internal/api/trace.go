@@ -25,16 +25,16 @@ func traceRequests(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(recorder, request.WithContext(ctx))
 
 			route := chi.RouteContext(ctx).RoutePattern()
+			if route == "/healthz" {
+				// Platform health checks poll this route every few seconds; they would drown out other logs.
+				return
+			}
 			if route == "" {
 				route = "unmatched"
 			}
 			level := slog.LevelInfo
-			switch {
-			case recorder.statusCode() >= http.StatusInternalServerError:
+			if recorder.statusCode() >= http.StatusInternalServerError {
 				level = slog.LevelError
-			case route == "/healthz":
-				// Platform health checks poll this route every few seconds.
-				level = slog.LevelDebug
 			}
 			logger.LogAttrs(ctx, level, "request completed",
 				slog.String("method", request.Method),

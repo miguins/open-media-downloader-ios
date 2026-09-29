@@ -107,7 +107,6 @@ func TestAccessLogLevels(t *testing.T) {
 	tests := []struct {
 		path, route, level string
 	}{
-		{"/healthz", "/healthz", "DEBUG"},
 		{"/readyz", "/readyz", "INFO"},
 		{"/unknown", "unmatched", "INFO"},
 	}
@@ -117,6 +116,17 @@ func TestAccessLogLevels(t *testing.T) {
 		if access["route"] != test.route || access["level"] != test.level {
 			t.Fatalf("%s access log = %v; want route %q at %s", test.path, access, test.route, test.level)
 		}
+	}
+}
+
+func TestHealthChecksAreNotLogged(t *testing.T) {
+	f := newAPIFixture(t)
+	response := f.do(t, http.MethodGet, "/healthz", "", "")
+	if response.Code != http.StatusOK || response.Header().Get("X-Trace-Id") == "" {
+		t.Fatalf("health check = %d; want 200 with a trace", response.Code)
+	}
+	if lines := logLines(t, f.logs); len(lines) != 0 {
+		t.Fatalf("health check logged %v; want nothing even at debug level", lines)
 	}
 }
 

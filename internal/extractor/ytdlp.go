@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/miguins/open-media-downloader-ios/internal/job"
 )
 
 // ytdlpFormat prefers H.264/AAC without transcoding. Extractors name H.264
@@ -62,7 +64,7 @@ func (y *YTDLP) Extract(ctx context.Context, request Request, proxyURL string) (
 	result, err := y.runner.Run(ctx, Command{Path: y.path, Args: y.args(request, proxyURL, postMedia), Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
 	// A photo entry makes yt-dlp exit with status 1 after writing its thumbnail.
 	if err != nil && (!postMedia || !errors.Is(err, ErrCommandExit) || result.ExitCode != 1 || !onlyMissingFormats(result.Stderr)) {
-		return nil, adapterCommandError(ctx, err)
+		return nil, toolFailure(ctx, "yt-dlp", job.DetailToolError, result, err)
 	}
 	// yt-dlp skips an oversized download with a successful exit and only reports it on stdout.
 	if bytes.Contains(result.Stdout, ytdlpTooLarge) {
@@ -79,12 +81,6 @@ func (y *YTDLP) Extract(ctx context.Context, request Request, proxyURL string) (
 	}
 	files, err := y.media.Finalize(ctx, request.WorkDir, names)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-		if errors.Is(err, ErrExtractionFailed) {
-			return nil, ErrExtractionFailed
-		}
 		return nil, err
 	}
 	return files, nil
@@ -209,19 +205,6 @@ func validProxyURL(raw string) bool {
 	}
 	n, err := strconv.Atoi(port)
 	return err == nil && n > 0 && n <= 65535
-}
-
-func adapterCommandError(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
-	}
-	if errors.Is(err, ErrCommandExit) || errors.Is(err, ErrOutputLimit) {
-		return ErrExtractionFailed
-	}
-	return err
 }
 
 func discoverYTDLP(dir string) ([]string, error) {

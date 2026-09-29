@@ -185,7 +185,9 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 
 		return
 	case errors.Is(err, extractor.ErrExtractionFailed):
-		w.fail(ctx, j, job.ErrorExtractionFailed)
+		var failure *extractor.Failure
+		_ = errors.As(err, &failure)
+		w.failWith(ctx, j, job.ErrorExtractionFailed, failure)
 
 		return
 	case err != nil:
@@ -228,7 +230,7 @@ func (w *Worker) complete(ctx context.Context, j job.Job, files []extractor.File
 
 		return
 	case errors.Is(err, storage.ErrInvalidOutput):
-		w.fail(ctx, j, job.ErrorExtractionFailed)
+		w.failWith(ctx, j, job.ErrorExtractionFailed, &extractor.Failure{Detail: job.DetailInvalidOutput})
 
 		return
 	case err != nil:
@@ -262,10 +264,31 @@ func (w *Worker) discard(ctx context.Context, j job.Job) {
 	}
 }
 
-// fail records a failure unless the job was canceled or deleted meanwhile.
+// fail records a failure without further detail.
 func (w *Worker) fail(ctx context.Context, j job.Job, code job.ErrorCode) {
-	w.logger.WarnContext(ctx, "job failed", "error_code", string(code), "duration_ms", w.elapsed(j))
+	w.failWith(ctx, j, code, nil)
+}
+
+// failWith records a failure, explained by failure when it is not nil, unless the job was canceled
+// or deleted meanwhile. Sanitized tool diagnostics are logged only at debug level.
+func (w *Worker) failWith(ctx context.Context, j job.Job, code job.ErrorCode, failure *extractor.Failure) {
+	attrs := []any{"error_code", string(code), "duration_ms", w.elapsed(j)}
 	failed := j
+	if failure != nil {
+		failed.ErrorDetail = failure.Detail
+		attrs = append(attrs, "error_detail", string(failure.Detail))
+		if failure.Tool != "" {
+			attrs = append(attrs, "tool", failure.Tool, "exit_code", failure.ExitCode,
+				"egress_rejected", failure.Egress.Rejected, "egress_failures", failure.Egress.UpstreamFailures)
+		}
+		if failure.Signal != "" {
+			attrs = append(attrs, "signal", failure.Signal)
+		}
+	}
+	w.logger.WarnContext(ctx, "job failed", attrs...)
+	if failure != nil && len(failure.Diagnostics) > 0 {
+		w.logger.DebugContext(ctx, "extractor diagnostics", "lines", failure.Diagnostics)
+	}
 	_ = failed.Transition(job.StatusFailed, code, w.now()) // Claimed jobs are running, and code is a valid constant.
 	err := w.store.UpdateJobStatus(ctx, failed, job.StatusRunning)
 	if err != nil && !errors.Is(err, store.ErrConflict) && !errors.Is(err, store.ErrNotFound) {

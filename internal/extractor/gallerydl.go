@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+
+	"github.com/miguins/open-media-downloader-ios/internal/job"
 )
 
 var galleryTooLarge = []byte("File size larger than allowed maximum")
@@ -42,7 +44,7 @@ func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL strin
 	}
 	result, err := g.runner.Run(ctx, Command{Path: g.path, Args: args, Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
 	if err != nil {
-		return nil, adapterCommandError(ctx, err)
+		return nil, toolFailure(ctx, "gallery-dl", job.DetailToolError, result, err)
 	}
 	// gallery-dl skips an oversized file with a warning and continues successfully.
 	if bytes.Contains(result.Stderr, galleryTooLarge) {
@@ -52,17 +54,7 @@ func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL strin
 	if err != nil {
 		return nil, err
 	}
-	files, err := g.media.Finalize(ctx, request.WorkDir, names)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-		if errors.Is(err, ErrExtractionFailed) {
-			return nil, ErrExtractionFailed
-		}
-		return nil, err
-	}
-	return files, nil
+	return g.media.Finalize(ctx, request.WorkDir, names)
 }
 
 type numberedEntry struct {

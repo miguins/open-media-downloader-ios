@@ -2,7 +2,9 @@ package extractor
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -13,6 +15,26 @@ func configureProcessGroup(cmd *exec.Cmd, grace time.Duration) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	// Also bound pipe draining if a tool exits with a descendant holding a pipe.
 	cmd.WaitDelay = grace
+}
+
+// exitSignal names the signal that terminated a process, or returns "" when it exited normally.
+func exitSignal(state *os.ProcessState) string {
+	status, ok := state.Sys().(syscall.WaitStatus)
+	if !ok || !status.Signaled() {
+		return ""
+	}
+	switch status.Signal() {
+	case syscall.SIGKILL:
+		return "SIGKILL"
+	case syscall.SIGTERM:
+		return "SIGTERM"
+	case syscall.SIGSEGV:
+		return "SIGSEGV"
+	case syscall.SIGABRT:
+		return "SIGABRT"
+	default:
+		return "signal " + strconv.Itoa(int(status.Signal()))
+	}
 }
 
 func terminateProcessGroup(pid int, grace time.Duration) error {

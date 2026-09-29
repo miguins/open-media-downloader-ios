@@ -168,3 +168,33 @@ func TestJobRepositoriesFailAfterClose(t *testing.T) {
 		}
 	}
 }
+
+func TestJobErrorDetailRoundTrip(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	createTestKey(t, s, "owner", "owner")
+	created := createTestJob(t, s, "owner")
+	if got, err := s.Job(ctx, "owner", created.ID); err != nil || got.ErrorDetail != "" {
+		t.Fatalf("new job detail = %q, %v; want none", got.ErrorDetail, err)
+	}
+
+	running := created
+	if err := running.Transition(job.StatusRunning, "", testNow.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateJobStatus(ctx, running, job.StatusQueued); err != nil {
+		t.Fatal(err)
+	}
+	failed := running
+	if err := failed.Transition(job.StatusFailed, job.ErrorExtractionFailed, testNow.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	failed.ErrorDetail = job.DetailLoginRequired
+	if err := s.UpdateJobStatus(ctx, failed, job.StatusRunning); err != nil {
+		t.Fatalf("UpdateJobStatus() error = %v", err)
+	}
+	got, err := s.Job(ctx, "owner", created.ID)
+	if err != nil || !reflect.DeepEqual(got, failed) {
+		t.Fatalf("Job() = %#v, %v; want %#v", got, err, failed)
+	}
+}

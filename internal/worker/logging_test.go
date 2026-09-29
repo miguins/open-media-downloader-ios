@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/id"
 	"github.com/miguins/open-media-downloader-ios/internal/job"
 	"github.com/miguins/open-media-downloader-ios/internal/logging"
+	"github.com/miguins/open-media-downloader-ios/internal/urlpolicy"
 )
 
 func (f *fixture) logLines(t *testing.T) []map[string]any {
@@ -145,5 +148,82 @@ func TestShutdownDoesNotLogClaimFailure(t *testing.T) {
 	}
 	if got := f.logs.String(); got != "" {
 		t.Fatalf("logs = %s; want no claim failure during shutdown", got)
+	}
+}
+
+func TestExtractionFailureDetailsAreStoredAndLogged(t *testing.T) {
+	failure := &extractor.Failure{
+		Detail: job.DetailLoginRequired, Tool: "yt-dlp", ExitCode: 1,
+		Egress:      urlpolicy.EgressStats{Rejected: 1, UpstreamFailures: 2},
+		Diagnostics: []string{"ERROR: [instagram] login required"},
+	}
+	ext := extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) { return nil, failure })
+	for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
+		f := newFixture(t, ext, defaultSettings())
+		f.worker.logger = logging.New(f.logs, level)
+		j := f.enqueue(t)
+
+		f.worker.runOnce(context.Background())
+
+		if got := f.job(t, j.ID); got.ErrorCode != job.ErrorExtractionFailed || got.ErrorDetail != job.DetailLoginRequired {
+			t.Fatalf("job = %s/%s; want extraction_failed/login_required", got.ErrorCode, got.ErrorDetail)
+		}
+		lines := f.logLines(t)
+		failed := findLog(t, lines, "job failed")
+		if failed["error_detail"] != "login_required" || failed["tool"] != "yt-dlp" || failed["exit_code"] != float64(1) ||
+			failed["egress_rejected"] != float64(1) || failed["egress_failures"] != float64(2) {
+			t.Fatalf("job failed log = %v", failed)
+		}
+		if _, ok := failed["signal"]; ok {
+			t.Fatalf("job failed log = %v; want no signal for a normal exit", failed)
+		}
+		diagnostics := false
+		for _, line := range lines {
+			if line["msg"] == "extractor diagnostics" {
+				diagnostics = true
+				if lines, _ := line["lines"].([]any); len(lines) != 1 || line["job_id"] != j.ID {
+					t.Fatalf("diagnostics log = %v", line)
+				}
+			}
+		}
+		if diagnostics != (level == slog.LevelDebug) {
+			t.Fatalf("level %v: diagnostics logged = %v", level, diagnostics)
+		}
+	}
+}
+
+func TestKilledExtractorLogsSignal(t *testing.T) {
+	failure := &extractor.Failure{Detail: job.DetailOutOfMemory, Tool: "yt-dlp", ExitCode: -1, Signal: "SIGKILL"}
+	f := newFixture(t, extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) { return nil, failure }), defaultSettings())
+	f.enqueue(t)
+	f.worker.runOnce(context.Background())
+	if failed := findLog(t, f.logLines(t), "job failed"); failed["signal"] != "SIGKILL" || failed["error_detail"] != "out_of_memory" {
+		t.Fatalf("job failed log = %v", failed)
+	}
+}
+
+func TestInvalidOutputHasDetail(t *testing.T) {
+	f := newFixture(t, writeFile("../escape", "video/mp4", "media"), defaultSettings())
+	j := f.enqueue(t)
+	f.worker.runOnce(context.Background())
+	if got := f.job(t, j.ID); got.ErrorCode != job.ErrorExtractionFailed || got.ErrorDetail != job.DetailInvalidOutput {
+		t.Fatalf("job = %s/%s; want extraction_failed/invalid_output", got.ErrorCode, got.ErrorDetail)
+	}
+	failed := findLog(t, f.logLines(t), "job failed")
+	if _, ok := failed["tool"]; ok || failed["error_detail"] != "invalid_output" {
+		t.Fatalf("job failed log = %v; want a detail without tool fields", failed)
+	}
+}
+
+func TestFailuresWithoutDetailOmitDetailFields(t *testing.T) {
+	fail := extractFunc(func(context.Context, extractor.Request) ([]extractor.File, error) { return nil, errors.New("internal") })
+	f := newFixture(t, fail, defaultSettings())
+	j := f.enqueue(t)
+	f.worker.runOnce(context.Background())
+	if got := f.job(t, j.ID); got.ErrorDetail != "" {
+		t.Fatalf("detail = %q; want none for internal errors", got.ErrorDetail)
+	}
+	if failed := findLog(t, f.logLines(t), "job failed"); failed["error_detail"] != nil {
+		t.Fatalf("job failed log = %v; want no detail", failed)
 	}
 }

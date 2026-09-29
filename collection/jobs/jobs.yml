@@ -30,6 +30,7 @@ runtime:
           expect(body.url).to.equal("https://www.instagram.com/reel/DdwMu5VhCUn/");
           expect(body.platform).to.equal("instagram");
           expect(body.error).to.equal(null);
+          expect(body.error_detail).to.equal(null);
           expect(res.getHeader("location")).to.equal("/v1/jobs/" + body.id);
         });
   assertions:

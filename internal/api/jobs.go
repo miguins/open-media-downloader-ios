@@ -24,15 +24,16 @@ type jobHandler struct {
 }
 
 type jobResponse struct {
-	ID        string         `json:"id"`
-	Status    job.Status     `json:"status"`
-	URL       string         `json:"url"`
-	Platform  string         `json:"platform"`
-	Error     *job.ErrorCode `json:"error"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	ExpiresAt time.Time      `json:"expires_at"`
-	Items     []itemResponse `json:"items,omitempty"`
+	ID        string           `json:"id"`
+	Status    job.Status       `json:"status"`
+	URL       string           `json:"url"`
+	Platform  string           `json:"platform"`
+	Error     *job.ErrorCode   `json:"error"`
+	Detail    *job.ErrorDetail `json:"error_detail"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	ExpiresAt time.Time        `json:"expires_at"`
+	Items     []itemResponse   `json:"items,omitempty"`
 }
 
 type itemResponse struct {
@@ -57,6 +58,10 @@ func newJobResponse(j job.Job) jobResponse {
 	if j.ErrorCode != "" {
 		code := j.ErrorCode
 		response.Error = &code
+	}
+	if j.ErrorDetail != "" {
+		detail := j.ErrorDetail
+		response.Detail = &detail
 	}
 
 	return response

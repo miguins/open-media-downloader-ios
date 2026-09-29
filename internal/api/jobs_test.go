@@ -117,6 +117,7 @@ type jobBody struct {
 	URL       string     `json:"url"`
 	Platform  string     `json:"platform"`
 	Error     *string    `json:"error"`
+	Detail    *string    `json:"error_detail"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ExpiresAt time.Time  `json:"expires_at"`
@@ -175,7 +176,7 @@ func TestCreateJob(t *testing.T) {
 	}
 	body := decodeJob(t, response)
 	if !id.Valid(body.ID) || body.Status != "queued" || body.URL != "https://vimeo.com/123" || body.Platform != "vimeo" ||
-		body.Error != nil || body.Items != nil || body.ExpiresAt.Sub(body.CreatedAt) != time.Hour {
+		body.Error != nil || body.Detail != nil || body.Items != nil || body.ExpiresAt.Sub(body.CreatedAt) != time.Hour {
 		t.Fatalf("body = %#v", body)
 	}
 	if got := response.Header().Get("Location"); got != "/v1/jobs/"+body.ID {
@@ -499,8 +500,29 @@ func TestFailedJobReportsErrorCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := decodeJob(t, f.do(t, http.MethodGet, "/v1/jobs/"+created.ID, f.key, ""))
-	if body.Status != "failed" || body.Error == nil || *body.Error != "timeout" || body.Items != nil {
+	if body.Status != "failed" || body.Error == nil || *body.Error != "timeout" || body.Detail != nil || body.Items != nil {
 		t.Fatalf("body = %#v", body)
 	}
 	assertError(t, f.do(t, http.MethodDelete, "/v1/jobs/"+created.ID, f.key, ""), http.StatusConflict, "conflict")
+}
+
+func TestFailedJobReportsErrorDetail(t *testing.T) {
+	f := newAPIFixture(t)
+	created := f.createJob(t)
+	claimed, err := f.store.ClaimNextJob(context.Background(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := claimed
+	if err := failed.Transition(job.StatusFailed, job.ErrorExtractionFailed, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	failed.ErrorDetail = job.DetailRateLimited
+	if err := f.store.UpdateJobStatus(context.Background(), failed, job.StatusRunning); err != nil {
+		t.Fatal(err)
+	}
+	body := decodeJob(t, f.do(t, http.MethodGet, "/v1/jobs/"+created.ID, f.key, ""))
+	if body.Error == nil || *body.Error != "extraction_failed" || body.Detail == nil || *body.Detail != "rate_limited" {
+		t.Fatalf("body = %#v; want extraction_failed with rate_limited", body)
+	}
 }

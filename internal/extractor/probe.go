@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/miguins/open-media-downloader-ios/internal/job"
 )
 
 // Inspection is the trusted classification of one local media file.
@@ -53,13 +55,7 @@ func (p *Probe) Inspect(ctx context.Context, workDir, name string) (Inspection, 
 		"-v", "error", "-protocol_whitelist", "file", "-show_format", "-show_streams", "-of", "json", path,
 	}})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return Inspection{}, err
-		}
-		if errors.Is(err, ErrCommandExit) || errors.Is(err, ErrOutputLimit) {
-			return Inspection{}, ErrExtractionFailed
-		}
-		return Inspection{}, err
+		return Inspection{}, toolFailure(ctx, "ffprobe", job.DetailProcessingFailed, result, err)
 	}
 	if len(bytes.TrimSpace(result.Stdout)) == 0 {
 		return Inspection{}, ErrExtractionFailed

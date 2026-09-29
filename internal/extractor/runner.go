@@ -27,10 +27,12 @@ type Command struct {
 }
 
 // Result contains bounded, untrusted tool output. It must never be logged.
+// Signal names the signal that terminated the process, if any.
 type Result struct {
 	Stdout   []byte
 	Stderr   []byte
 	ExitCode int
+	Signal   string
 }
 
 // Runner executes tools with an isolated environment and bounded output.
@@ -92,6 +94,7 @@ func (r *Runner) run(ctx context.Context, command Command, mkdir func(string, os
 	result.Stdout, result.Stderr = stdout.buffer.Bytes(), stderr.buffer.Bytes()
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
+		result.Signal = exitSignal(cmd.ProcessState)
 	}
 	return result, commandError(ctx, err, stdout.overflow || stderr.overflow)
 }

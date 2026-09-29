@@ -10,15 +10,15 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/job"
 )
 
-const jobColumns = "id, owner_id, source_url, platform, status, error_code, created_at, updated_at, started_at, finished_at, expires_at"
+const jobColumns = "id, owner_id, source_url, platform, status, error_code, created_at, updated_at, started_at, finished_at, expires_at, error_detail"
 
 // CreateJob stores a new job.
 func (s *Store) CreateJob(ctx context.Context, j job.Job) error {
 	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO jobs ("+jobColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO jobs ("+jobColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		j.ID, j.OwnerID, j.SourceURL, j.Platform, string(j.Status), nullableString(string(j.ErrorCode)),
 		toMillis(j.CreatedAt), toMillis(j.UpdatedAt), nullableMillis(j.StartedAt), nullableMillis(j.FinishedAt),
-		toMillis(j.ExpiresAt))
+		toMillis(j.ExpiresAt), nullableString(string(j.ErrorDetail)))
 	if err != nil {
 		return fmt.Errorf("store: create job: %w", err)
 	}
@@ -45,9 +45,9 @@ func (s *Store) Job(ctx context.Context, ownerID, id string) (job.Job, error) {
 // the owner has no such job.
 func (s *Store) UpdateJobStatus(ctx context.Context, j job.Job, from job.Status) error {
 	err := requireAffected(s.db.ExecContext(ctx,
-		`UPDATE jobs SET status = ?, error_code = ?, updated_at = ?, started_at = ?, finished_at = ?
+		`UPDATE jobs SET status = ?, error_code = ?, error_detail = ?, updated_at = ?, started_at = ?, finished_at = ?
 		WHERE id = ? AND owner_id = ? AND status = ?`,
-		string(j.Status), nullableString(string(j.ErrorCode)), toMillis(j.UpdatedAt),
+		string(j.Status), nullableString(string(j.ErrorCode)), nullableString(string(j.ErrorDetail)), toMillis(j.UpdatedAt),
 		nullableMillis(j.StartedAt), nullableMillis(j.FinishedAt), j.ID, j.OwnerID, string(from)))
 	if !errors.Is(err, ErrNotFound) {
 		if err != nil {
@@ -171,16 +171,17 @@ func scanJob(row scanner) (job.Job, error) {
 	var (
 		j                               job.Job
 		status                          string
-		errorCode                       sql.NullString
+		errorCode, errorDetail          sql.NullString
 		createdAt, updatedAt, expiresAt int64
 		startedAt, finishedAt           sql.NullInt64
 	)
 	if err := row.Scan(&j.ID, &j.OwnerID, &j.SourceURL, &j.Platform, &status, &errorCode,
-		&createdAt, &updatedAt, &startedAt, &finishedAt, &expiresAt); err != nil {
+		&createdAt, &updatedAt, &startedAt, &finishedAt, &expiresAt, &errorDetail); err != nil {
 		return job.Job{}, err
 	}
 	j.Status = job.Status(status)
 	j.ErrorCode = job.ErrorCode(errorCode.String)
+	j.ErrorDetail = job.ErrorDetail(errorDetail.String)
 	j.CreatedAt = fromMillis(createdAt)
 	j.UpdatedAt = fromMillis(updatedAt)
 	j.StartedAt = fromNullableMillis(startedAt)

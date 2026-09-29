@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/miguins/open-media-downloader-ios/internal/job"
 )
 
 // MediaTools validates extracted files and performs safe local stream-copy remuxing.
@@ -68,15 +70,8 @@ func (m *MediaTools) remux(ctx context.Context, workDir string, input Inspection
 		"-v", "error", "-nostdin", "-n", "-protocol_whitelist", "file", "-i", filepath.Join(workDir, input.Name),
 		"-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", temporaryPath,
 	}})
-	_ = result
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return Inspection{}, err
-		}
-		if errors.Is(err, ErrCommandExit) || errors.Is(err, ErrOutputLimit) {
-			return Inspection{}, ErrExtractionFailed
-		}
-		return Inspection{}, err
+		return Inspection{}, toolFailure(ctx, "ffmpeg", job.DetailProcessingFailed, result, err)
 	}
 	output, err := m.probe.Inspect(ctx, workDir, temporary)
 	if err != nil {

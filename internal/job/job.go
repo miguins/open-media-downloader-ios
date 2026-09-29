@@ -69,19 +69,62 @@ func (c ErrorCode) Valid() bool {
 	}
 }
 
+// ErrorDetail is the closed set of reasons that explain an extraction failure.
+// Values are derived from fixed patterns and never contain tool output.
+type ErrorDetail string
+
+// Job error details.
+const (
+	DetailOutOfMemory      ErrorDetail = "out_of_memory"
+	DetailLoginRequired    ErrorDetail = "login_required"
+	DetailBlocked          ErrorDetail = "blocked"
+	DetailRateLimited      ErrorDetail = "rate_limited"
+	DetailUnavailable      ErrorDetail = "unavailable"
+	DetailGeoRestricted    ErrorDetail = "geo_restricted"
+	DetailAgeRestricted    ErrorDetail = "age_restricted"
+	DetailNoMedia          ErrorDetail = "no_media"
+	DetailNetworkError     ErrorDetail = "network_error"
+	DetailEgressDenied     ErrorDetail = "egress_denied"
+	DetailInvalidOutput    ErrorDetail = "invalid_output"
+	DetailProcessingFailed ErrorDetail = "processing_failed"
+	DetailToolError        ErrorDetail = "tool_error"
+)
+
+// ErrorDetails returns every error detail.
+func ErrorDetails() []ErrorDetail {
+	return []ErrorDetail{
+		DetailOutOfMemory, DetailLoginRequired, DetailBlocked, DetailRateLimited, DetailUnavailable,
+		DetailGeoRestricted, DetailAgeRestricted, DetailNoMedia, DetailNetworkError, DetailEgressDenied,
+		DetailInvalidOutput, DetailProcessingFailed, DetailToolError,
+	}
+}
+
+// Valid reports whether d is a known error detail.
+func (d ErrorDetail) Valid() bool {
+	for _, known := range ErrorDetails() {
+		if d == known {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Job is a request by one owner to download media from one normalized URL.
 type Job struct {
-	ID         string
-	OwnerID    string
-	SourceURL  string
-	Platform   string
-	Status     Status
-	ErrorCode  ErrorCode
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	StartedAt  time.Time
-	FinishedAt time.Time
-	ExpiresAt  time.Time
+	ID        string
+	OwnerID   string
+	SourceURL string
+	Platform  string
+	Status    Status
+	ErrorCode ErrorCode
+	// ErrorDetail explains an extraction failure; it is empty otherwise.
+	ErrorDetail ErrorDetail
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	StartedAt   time.Time
+	FinishedAt  time.Time
+	ExpiresAt   time.Time
 }
 
 // New returns a queued job that expires after retention.

@@ -306,21 +306,6 @@ func TestDiscoveryAndAdapterErrors(t *testing.T) {
 			t.Errorf("proxy accepted %q", raw)
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if !errors.Is(adapterCommandError(ctx, errors.New("x")), context.Canceled) {
-		t.Fatal("cancel lost")
-	}
-	if !errors.Is(adapterCommandError(context.Background(), ErrOutputLimit), ErrExtractionFailed) {
-		t.Fatal("limit not mapped")
-	}
-	internal := errors.New("internal")
-	if !errors.Is(adapterCommandError(context.Background(), internal), internal) {
-		t.Fatal("internal changed")
-	}
-	if !errors.Is(adapterCommandError(context.Background(), context.DeadlineExceeded), context.DeadlineExceeded) {
-		t.Fatal("deadline changed")
-	}
 	if secureRegular(filepath.Join(dir, "missing")) {
 		t.Fatal("missing regular")
 	}
@@ -408,10 +393,12 @@ func TestGalleryAdapterAndDiscovery(t *testing.T) {
 type scriptedSession struct {
 	err    error
 	closed *bool
+	stats  urlpolicy.EgressStats
 }
 
-func (s scriptedSession) URL() string { return "http://127.0.0.1:1" }
-func (s scriptedSession) Err() error  { return s.err }
+func (s scriptedSession) URL() string                  { return "http://127.0.0.1:1" }
+func (s scriptedSession) Err() error                   { return s.err }
+func (s scriptedSession) Stats() urlpolicy.EgressStats { return s.stats }
 func (s scriptedSession) Close() error {
 	if s.closed != nil {
 		*s.closed = true

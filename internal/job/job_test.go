@@ -142,3 +142,17 @@ func TestDownloadTokenExpired(t *testing.T) {
 		t.Fatal("Expired() boundary is wrong")
 	}
 }
+
+func TestErrorDetails(t *testing.T) {
+	for _, detail := range ErrorDetails() {
+		if !detail.Valid() {
+			t.Fatalf("%s.Valid() = false", detail)
+		}
+	}
+	if len(ErrorDetails()) != 13 {
+		t.Fatalf("ErrorDetails() = %v; want 13 details", ErrorDetails())
+	}
+	if ErrorDetail("").Valid() || ErrorDetail("ERROR: raw extractor output").Valid() {
+		t.Fatal("unknown error detail accepted")
+	}
+}

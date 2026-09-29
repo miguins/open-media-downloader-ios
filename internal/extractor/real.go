@@ -10,6 +10,7 @@ import (
 type proxySession interface {
 	URL() string
 	Err() error
+	Stats() urlpolicy.EgressStats
 	Close() error
 }
 
@@ -56,5 +57,5 @@ func (r *Real) Extract(ctx context.Context, request Request) ([]File, error) {
 	if errors.Is(session.Err(), urlpolicy.ErrEgressTooLarge) {
 		return nil, ErrTooLarge
 	}
-	return files, err
+	return files, explainFailure(err, session.Stats())
 }

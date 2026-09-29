@@ -3,13 +3,16 @@ package extractor
 import (
 	"context"
 	"testing"
+
+	"github.com/miguins/open-media-downloader-ios/internal/urlpolicy"
 )
 
 type testSession struct{}
 
-func (testSession) URL() string  { return "http://127.0.0.1:1" }
-func (testSession) Err() error   { return nil }
-func (testSession) Close() error { return nil }
+func (testSession) URL() string                  { return "http://127.0.0.1:1" }
+func (testSession) Err() error                   { return nil }
+func (testSession) Stats() urlpolicy.EgressStats { return urlpolicy.EgressStats{} }
+func (testSession) Close() error                 { return nil }
 
 func TestRealRoutesYouTube(t *testing.T) {
 	called := false

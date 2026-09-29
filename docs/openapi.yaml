@@ -390,6 +390,7 @@ components:
         - url
         - platform
         - error
+        - error_detail
         - created_at
         - updated_at
         - expires_at
@@ -426,6 +427,29 @@ components:
             - too_large
             - timeout
             - internal
+            - null
+        error_detail:
+          type:
+            - string
+            - "null"
+          description: >-
+            Why an `extraction_failed` job failed, derived from fixed patterns in the media tools'
+            output; null for other errors. `tool_error` means no known pattern matched, and
+            `invalid_output` means the downloaded files did not pass validation.
+          enum:
+            - out_of_memory
+            - login_required
+            - blocked
+            - rate_limited
+            - unavailable
+            - geo_restricted
+            - age_restricted
+            - no_media
+            - network_error
+            - egress_denied
+            - invalid_output
+            - processing_failed
+            - tool_error
             - null
         created_at:
           type: string

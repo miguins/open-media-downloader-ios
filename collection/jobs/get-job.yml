@@ -41,6 +41,9 @@ runtime:
           expect(body.items[0].download_url).to.match(/\/v1\/downloads\/[A-Za-z0-9_-]{43}$/);
         });
   assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
     - expression: res.status
       operator: eq
       value: "200"

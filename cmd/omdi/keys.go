@@ -62,35 +62,35 @@ func (c keysCommand) run(ctx context.Context, cfg config.Config, st *store.Store
 		plaintext, record := auth.Generate(c.arg, now)
 		if err := st.CreateAPIKey(ctx, record); err != nil {
 			if errors.Is(err, store.ErrConflict) {
-				logger.Error("API key name already exists")
+				logger.ErrorContext(ctx, "API key name already exists")
 			} else {
-				logger.Error("create API key", "error", err)
+				logger.ErrorContext(ctx, "create API key", "error", err)
 			}
 
 			return 1
 		}
 		_, _ = fmt.Fprintln(stdout, plaintext)
-		logger.Info("API key created; store it now because it cannot be shown again", "id", record.ID, "name", record.Name)
+		logger.InfoContext(ctx, "API key created; store it now because it cannot be shown again", "id", record.ID, "name", record.Name)
 
 		return 0
 	case "list":
 		return listKeys(ctx, st, stdout, logger)
 	default:
 		if !id.Valid(c.arg) {
-			logger.Error("API key not found")
+			logger.ErrorContext(ctx, "API key not found")
 
 			return 1
 		}
 		if err := st.RevokeAPIKey(ctx, c.arg, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				logger.Error("API key not found")
+				logger.ErrorContext(ctx, "API key not found")
 			} else {
-				logger.Error("revoke API key", "error", err)
+				logger.ErrorContext(ctx, "revoke API key", "error", err)
 			}
 
 			return 1
 		}
-		logger.Info("API key revoked", "id", c.arg)
+		logger.InfoContext(ctx, "API key revoked", "id", c.arg)
 
 		return 0
 	}
@@ -101,13 +101,13 @@ func (c keysCommand) run(ctx context.Context, cfg config.Config, st *store.Store
 func purgeRevokedKeys(ctx context.Context, cfg config.Config, st *store.Store, now time.Time, stdout io.Writer, logger *slog.Logger) int {
 	layout, err := storage.New(cfg.DataDir)
 	if err != nil {
-		logger.Error("prepare storage", "error", err)
+		logger.ErrorContext(ctx, "prepare storage", "error", err)
 
 		return 1
 	}
 	keys, ids, err := st.PurgeRevokedAPIKeys(ctx, now)
 	if err != nil {
-		logger.Error("purge revoked API keys", "error", err)
+		logger.ErrorContext(ctx, "purge revoked API keys", "error", err)
 
 		return 1
 	}
@@ -119,7 +119,7 @@ func purgeRevokedKeys(ctx context.Context, cfg config.Config, st *store.Store, n
 	}
 	_, _ = fmt.Fprintf(stdout, "purged %d revoked keys and %d jobs\n", keys, len(ids))
 	if failed > 0 {
-		logger.Error("some job files could not be removed; the server removes them on its next sweep", "count", failed)
+		logger.ErrorContext(ctx, "some job files could not be removed; the server removes them on its next sweep", "count", failed)
 
 		return 1
 	}
@@ -130,7 +130,7 @@ func purgeRevokedKeys(ctx context.Context, cfg config.Config, st *store.Store, n
 func listKeys(ctx context.Context, st *store.Store, stdout io.Writer, logger *slog.Logger) int {
 	keys, err := st.APIKeys(ctx)
 	if err != nil {
-		logger.Error("list API keys", "error", err)
+		logger.ErrorContext(ctx, "list API keys", "error", err)
 
 		return 1
 	}
@@ -141,7 +141,7 @@ func listKeys(ctx context.Context, st *store.Store, stdout io.Writer, logger *sl
 			key.ID, key.Name, formatTime(key.CreatedAt), formatTime(key.LastUsedAt), formatTime(key.RevokedAt))
 	}
 	if err := table.Flush(); err != nil {
-		logger.Error("write API key list", "error", err)
+		logger.ErrorContext(ctx, "write API key list", "error", err)
 
 		return 1
 	}

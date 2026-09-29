@@ -27,8 +27,9 @@ func TestRestoreAPIKeyCreatesUsableCredential(t *testing.T) {
 	ctx := context.Background()
 	st := restorationStore(t)
 	plaintext, original := Generate("phone", now)
-	if err := RestoreAPIKey(ctx, st, plaintext, now); err != nil {
-		t.Fatal(err)
+	restored, created, err := RestoreAPIKey(ctx, st, plaintext, now)
+	if err != nil || !created {
+		t.Fatalf("RestoreAPIKey() created = %v, error = %v; want created", created, err)
 	}
 	got, err := st.APIKey(ctx, original.ID)
 	if err != nil {
@@ -37,9 +38,12 @@ func TestRestoreAPIKeyCreatesUsableCredential(t *testing.T) {
 	if !reflect.DeepEqual(got.SecretHash, original.SecretHash) || !got.CreatedAt.Equal(now) || !ValidKeyName(got.Name) {
 		t.Fatal("restoration did not persist a valid hashed credential")
 	}
+	if !reflect.DeepEqual(restored, got) {
+		t.Fatal("restoration returned a record different from the stored one")
+	}
 	authenticator := NewAuthenticator(st, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	owner, err := authenticator.authenticate(ctx, "Bearer "+plaintext)
-	if err != nil || owner != original.ID {
+	if err != nil || owner.ID != original.ID {
 		t.Fatalf("restored credential cannot authenticate: %v", err)
 	}
 }
@@ -65,11 +69,12 @@ func TestRestoreAPIKeyPreservesExistingRecords(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := RestoreAPIKey(ctx, st, plaintext, now.Add(time.Hour)); err != nil {
-				t.Fatal(err)
+			restored, created, err := RestoreAPIKey(ctx, st, plaintext, now.Add(time.Hour))
+			if err != nil || created {
+				t.Fatalf("RestoreAPIKey() created = %v, error = %v; want the existing record", created, err)
 			}
 			after, err := st.APIKey(ctx, original.ID)
-			if err != nil || !reflect.DeepEqual(before, after) {
+			if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(restored, after) {
 				t.Fatal("restoration changed an existing record")
 			}
 			keys, err := st.APIKeys(ctx)
@@ -119,7 +124,7 @@ func TestRestoreAPIKeyRejectsErrorsWithoutChangingKeys(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			err := RestoreAPIKey(ctx, st, plaintext, now)
+			_, _, err := RestoreAPIKey(ctx, st, plaintext, now)
 			if err == nil {
 				t.Fatal("restoration unexpectedly succeeded")
 			}

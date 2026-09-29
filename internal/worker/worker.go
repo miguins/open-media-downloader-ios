@@ -9,6 +9,7 @@ import (
 
 	"github.com/miguins/open-media-downloader-ios/internal/extractor"
 	"github.com/miguins/open-media-downloader-ios/internal/job"
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
@@ -98,7 +99,9 @@ func (w *Worker) drain(ctx context.Context) {
 }
 
 // runOnce claims and runs one job and reports whether a job was claimed.
+// Each attempt has its own trace, and a claimed job's identity is added to its log scope.
 func (w *Worker) runOnce(ctx context.Context) bool {
+	ctx = logging.NewTrace(ctx)
 	j, err := w.store.ClaimNextJob(ctx, w.now())
 	if errors.Is(err, store.ErrNotFound) {
 		return false
@@ -108,6 +111,11 @@ func (w *Worker) runOnce(ctx context.Context) bool {
 
 		return false
 	}
+	logging.Add(ctx, "job_id", j.ID, "platform", j.Platform, "key_id", j.OwnerID)
+	if key, err := w.store.APIKey(ctx, j.OwnerID); err == nil {
+		logging.Add(ctx, "key_name", key.Name)
+	}
+	w.logger.InfoContext(ctx, "job started")
 	w.process(ctx, j)
 
 	return true
@@ -134,7 +142,7 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 	}
 	defer func() {
 		if err := w.layout.RemoveWorkDir(j.ID); err != nil {
-			w.logger.ErrorContext(ctx, "remove work directory failed", "job_id", j.ID)
+			w.logger.ErrorContext(ctx, "remove work directory failed")
 		}
 	}()
 
@@ -158,7 +166,13 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 		MaxItems: w.settings.MaxJobItems,
 	})
 	switch cause := context.Cause(jobCtx); {
-	case ctx.Err() != nil, errors.Is(cause, errCanceled):
+	case ctx.Err() != nil:
+		w.logger.InfoContext(ctx, "job interrupted by shutdown", "duration_ms", w.elapsed(j))
+
+		return
+	case errors.Is(cause, errCanceled):
+		w.logger.InfoContext(ctx, "job canceled while running", "duration_ms", w.elapsed(j))
+
 		return
 	case err != nil && errors.Is(cause, errTimeout):
 		w.fail(ctx, j, job.ErrorTimeout)
@@ -226,7 +240,11 @@ func (w *Worker) complete(ctx context.Context, j job.Job, files []extractor.File
 	err = w.store.CompleteJob(ctx, done, items)
 	switch {
 	case err == nil:
-		w.logger.InfoContext(ctx, "job succeeded", "job_id", j.ID, "items", len(items))
+		var size int64
+		for _, item := range items {
+			size += item.SizeBytes
+		}
+		w.logger.InfoContext(ctx, "job succeeded", "items", len(items), "bytes", size, "duration_ms", w.elapsed(j))
 	case errors.Is(err, store.ErrConflict), errors.Is(err, store.ErrNotFound):
 		// The job was canceled or deleted while it ran; its files are no longer wanted.
 		w.discard(ctx, j)
@@ -238,17 +256,22 @@ func (w *Worker) complete(ctx context.Context, j job.Job, files []extractor.File
 
 func (w *Worker) discard(ctx context.Context, j job.Job) {
 	if err := w.layout.RemoveJob(j.ID); err != nil {
-		w.logger.ErrorContext(ctx, "remove job files failed", "job_id", j.ID)
+		w.logger.ErrorContext(ctx, "remove job files failed")
 	}
 }
 
 // fail records a failure unless the job was canceled or deleted meanwhile.
 func (w *Worker) fail(ctx context.Context, j job.Job, code job.ErrorCode) {
-	w.logger.WarnContext(ctx, "job failed", "job_id", j.ID, "platform", j.Platform, "error_code", string(code))
+	w.logger.WarnContext(ctx, "job failed", "error_code", string(code), "duration_ms", w.elapsed(j))
 	failed := j
 	_ = failed.Transition(job.StatusFailed, code, w.now()) // Claimed jobs are running, and code is a valid constant.
 	err := w.store.UpdateJobStatus(ctx, failed, job.StatusRunning)
 	if err != nil && !errors.Is(err, store.ErrConflict) && !errors.Is(err, store.ErrNotFound) {
-		w.logger.ErrorContext(ctx, "record job failure failed", "job_id", j.ID)
+		w.logger.ErrorContext(ctx, "record job failure failed")
 	}
+}
+
+// elapsed returns how long the job has run, in milliseconds.
+func (w *Worker) elapsed(j job.Job) int64 {
+	return w.now().Sub(j.StartedAt).Milliseconds()
 }

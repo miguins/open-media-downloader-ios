@@ -17,6 +17,7 @@ services:
     environment:
       GOTMPDIR: /home/omdi/.cache/go-build/tmp
       OMDI_HTTP_ADDR: "${OMDI_HTTP_ADDR-:8080}"
+      OMDI_LOG_LEVEL:
       OMDI_DATA_DIR:
       OMDI_RESTORE_API_KEY_ON_STARTUP:
       OMDI_API_KEY:

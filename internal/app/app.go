@@ -89,6 +89,7 @@ func serve(ctx context.Context, listener net.Listener, handler http.Handler, log
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+	logger.InfoContext(ctx, "HTTP server listening", "address", listener.Addr().String())
 	serveError := make(chan error, 1)
 	go func() {
 		serveError <- server.Serve(listener)
@@ -100,7 +101,7 @@ func serve(ctx context.Context, listener net.Listener, handler http.Handler, log
 	case <-ctx.Done():
 	}
 
-	logger.Info("shutting down HTTP server")
+	logger.InfoContext(ctx, "shutting down HTTP server")
 	shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := server.Shutdown(shutdownContext); err != nil {
@@ -113,6 +114,7 @@ func serve(ctx context.Context, listener net.Listener, handler http.Handler, log
 
 		return fmt.Errorf("shut down HTTP server: %w", err)
 	}
+	logger.InfoContext(ctx, "HTTP server stopped")
 
 	return normalizeServeError(<-serveError)
 }

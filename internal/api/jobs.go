@@ -13,6 +13,7 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/auth"
 	"github.com/miguins/open-media-downloader-ios/internal/id"
 	"github.com/miguins/open-media-downloader-ios/internal/job"
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
 
@@ -67,7 +68,7 @@ func (h *jobHandler) create(response http.ResponseWriter, request *http.Request)
 
 	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
-		writeError(response, http.StatusUnsupportedMediaType, "unsupported_media_type")
+		h.reject(response, request, http.StatusUnsupportedMediaType, "unsupported_media_type")
 
 		return
 	}
@@ -83,19 +84,19 @@ func (h *jobHandler) create(response http.ResponseWriter, request *http.Request)
 	var tooLarge *http.MaxBytesError
 	switch {
 	case errors.As(err, &tooLarge):
-		writeError(response, http.StatusRequestEntityTooLarge, "request_too_large")
+		h.reject(response, request, http.StatusRequestEntityTooLarge, "request_too_large")
 
 		return
 	case err != nil || body.URL == nil:
-		writeError(response, http.StatusBadRequest, "invalid_request")
+		h.reject(response, request, http.StatusBadRequest, "invalid_request")
 
 		return
 	}
 
 	normalized, err := h.deps.Policy.Normalize(*body.URL)
 	if err != nil {
-		h.deps.Logger.DebugContext(ctx, "rejected job URL", "reason", err.Error())
-		writeError(response, http.StatusUnprocessableEntity, "unsupported_url")
+		h.deps.Logger.DebugContext(ctx, "rejected job URL", "detail", err.Error())
+		h.reject(response, request, http.StatusUnprocessableEntity, "unsupported_url")
 
 		return
 	}
@@ -108,17 +109,19 @@ func (h *jobHandler) create(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if active >= h.deps.Settings.MaxQueuedJobs {
-		writeError(response, http.StatusTooManyRequests, "too_many_jobs")
+		h.reject(response, request, http.StatusTooManyRequests, "too_many_jobs")
 
 		return
 	}
 
 	j := job.New(ownerID, normalized.URL, normalized.Platform, time.Now().UTC(), h.deps.Settings.JobRetention)
+	logging.Add(ctx, "job_id", j.ID, "platform", j.Platform)
 	if err := h.deps.Store.CreateJob(ctx, j); err != nil {
 		h.internal(response, request, "create job failed")
 
 		return
 	}
+	h.deps.Logger.InfoContext(ctx, "job created")
 	h.deps.Notify()
 	response.Header().Set("Location", "/v1/jobs/"+j.ID)
 	writeJSON(response, http.StatusAccepted, newJobResponse(j))
@@ -137,6 +140,7 @@ func (h *jobHandler) get(response http.ResponseWriter, request *http.Request) {
 
 			return
 		}
+		h.deps.Logger.InfoContext(request.Context(), "download links issued", "items", len(items))
 		body.Items = items
 	}
 	writeJSON(response, http.StatusOK, body)
@@ -195,6 +199,7 @@ func (h *jobHandler) cancel(response http.ResponseWriter, request *http.Request)
 		_ = canceled.Transition(job.StatusCanceled, "", time.Now().UTC()) // Queued and running jobs can be canceled.
 		err := h.deps.Store.UpdateJobStatus(request.Context(), canceled, j.Status)
 		if err == nil {
+			h.deps.Logger.InfoContext(request.Context(), "job canceled", "previous_status", string(j.Status))
 			writeJSON(response, http.StatusOK, newJobResponse(canceled))
 
 			return
@@ -226,6 +231,7 @@ func (h *jobHandler) load(response http.ResponseWriter, request *http.Request) (
 
 		return job.Job{}, false
 	}
+	logging.Add(request.Context(), "job_id", j.ID, "platform", j.Platform)
 
 	return j, true
 }
@@ -237,6 +243,12 @@ func (h *jobHandler) storeError(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	h.internal(response, request, "job request failed")
+}
+
+// reject writes a client error for a job request and logs its fixed code, never the submitted body.
+func (h *jobHandler) reject(response http.ResponseWriter, request *http.Request, status int, code string) {
+	h.deps.Logger.InfoContext(request.Context(), "job rejected", "reason", code)
+	writeError(response, status, code)
 }
 
 func (h *jobHandler) internal(response http.ResponseWriter, request *http.Request, message string) {

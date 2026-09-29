@@ -69,7 +69,7 @@ func (c jobsCommand) run(ctx context.Context, cfg config.Config, st *store.Store
 	}
 	layout, err := storage.New(cfg.DataDir)
 	if err != nil {
-		logger.Error("prepare storage", "error", err)
+		logger.ErrorContext(ctx, "prepare storage", "error", err)
 
 		return 1
 	}
@@ -84,7 +84,7 @@ func (c jobsCommand) run(ctx context.Context, cfg config.Config, st *store.Store
 func listJobs(ctx context.Context, st *store.Store, filter store.JobFilter, stdout io.Writer, logger *slog.Logger) int {
 	jobs, err := st.Jobs(ctx, filter)
 	if err != nil {
-		logger.Error("list jobs", "error", err)
+		logger.ErrorContext(ctx, "list jobs", "error", err)
 
 		return 1
 	}
@@ -95,7 +95,7 @@ func listJobs(ctx context.Context, st *store.Store, filter store.JobFilter, stdo
 			j.ID, j.OwnerID, j.Platform, j.Status, formatTime(j.CreatedAt), formatTime(j.ExpiresAt))
 	}
 	if err := table.Flush(); err != nil {
-		logger.Error("write job list", "error", err)
+		logger.ErrorContext(ctx, "write job list", "error", err)
 
 		return 1
 	}
@@ -107,31 +107,31 @@ func listJobs(ctx context.Context, st *store.Store, filter store.JobFilter, stdo
 // removed by the server's orphan sweep if this process fails in between.
 func deleteJob(ctx context.Context, st *store.Store, layout *storage.Layout, jobID string, logger *slog.Logger) int {
 	if !id.Valid(jobID) {
-		logger.Error("job not found")
+		logger.ErrorContext(ctx, "job not found")
 
 		return 1
 	}
 	err := st.DeleteJob(ctx, jobID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		logger.Error("job not found")
+		logger.ErrorContext(ctx, "job not found")
 
 		return 1
 	case errors.Is(err, store.ErrConflict):
-		logger.Error("job is running; cancel it through the API or use omdi jobs purge")
+		logger.ErrorContext(ctx, "job is running; cancel it through the API or use omdi jobs purge")
 
 		return 1
 	case err != nil:
-		logger.Error("delete job", "error", err)
+		logger.ErrorContext(ctx, "delete job", "error", err)
 
 		return 1
 	}
 	if err := layout.RemoveJob(jobID); err != nil {
-		logger.Error("remove job files", "error", err)
+		logger.ErrorContext(ctx, "remove job files", "error", err)
 
 		return 1
 	}
-	logger.Info("job deleted", "id", jobID)
+	logger.InfoContext(ctx, "job deleted", "id", jobID)
 
 	return 0
 }
@@ -141,7 +141,7 @@ func deleteJob(ctx context.Context, st *store.Store, layout *storage.Layout, job
 func purgeJobs(ctx context.Context, st *store.Store, layout *storage.Layout, ownerID string, stdout io.Writer, logger *slog.Logger) int {
 	ids, err := st.PurgeJobs(ctx, ownerID, time.Now().UTC())
 	if err != nil {
-		logger.Error("purge jobs", "error", err)
+		logger.ErrorContext(ctx, "purge jobs", "error", err)
 
 		return 1
 	}
@@ -153,7 +153,7 @@ func purgeJobs(ctx context.Context, st *store.Store, layout *storage.Layout, own
 	}
 	_, _ = fmt.Fprintf(stdout, "purged %d jobs\n", len(ids))
 	if failed > 0 {
-		logger.Error("some job files could not be removed; the server removes them on its next sweep", "count", failed)
+		logger.ErrorContext(ctx, "some job files could not be removed; the server removes them on its next sweep", "count", failed)
 
 		return 1
 	}

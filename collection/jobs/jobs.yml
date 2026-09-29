@@ -33,6 +33,9 @@ runtime:
           expect(res.getHeader("location")).to.equal("/v1/jobs/" + body.id);
         });
   assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
     - expression: res.status
       operator: eq
       value: "202"

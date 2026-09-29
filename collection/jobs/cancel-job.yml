@@ -12,6 +12,9 @@ http:
 
 runtime:
   assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
     - expression: res.status
       operator: eq
       value: "409"

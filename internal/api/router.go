@@ -40,6 +40,7 @@ type Dependencies struct {
 // NewRouter returns the application HTTP handler.
 func NewRouter(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
+	router.Use(traceRequests(deps.Logger))
 	router.Get("/healthz", healthz)
 	router.Get("/readyz", readyz(deps.Readiness, deps.Logger))
 

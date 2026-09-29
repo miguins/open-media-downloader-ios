@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -299,4 +300,43 @@ func TestRunStopsServerWhenBackgroundTaskFails(t *testing.T) {
 	}()
 
 	requireResult(t, result, sentinel)
+}
+
+func TestServeLogsListeningAndShutdown(t *testing.T) {
+	listener := newTestListener(t)
+	var logs syncLogs
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- serve(ctx, listener, http.NotFoundHandler(), slog.New(slog.NewJSONHandler(&logs, nil)))
+	}()
+	response := getEventually(t, "http://"+listener.Addr().String())
+	_ = response.Body.Close()
+	cancel()
+	requireResult(t, result, nil)
+
+	got := logs.String()
+	if !strings.Contains(got, `"msg":"HTTP server listening"`) || !strings.Contains(got, `"address":"`+listener.Addr().String()+`"`) ||
+		!strings.Contains(got, `"msg":"HTTP server stopped"`) {
+		t.Fatalf("logs = %s; want listening and stopped events", got)
+	}
+}
+
+type syncLogs struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (l *syncLogs) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.buf.Write(p)
+}
+
+func (l *syncLogs) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.buf.String()
 }

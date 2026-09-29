@@ -15,6 +15,7 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/auth"
 	"github.com/miguins/open-media-downloader-ios/internal/cleanup"
 	"github.com/miguins/open-media-downloader-ios/internal/config"
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/readiness"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
@@ -33,58 +34,68 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) int {
-	logger := slog.New(slog.NewJSONHandler(stderr, nil))
+	// The level is lowered or raised once configuration loads; each invocation has one trace.
+	level := new(slog.LevelVar)
+	logger := logging.New(stderr, level)
+	ctx = logging.NewTrace(ctx)
 	switch {
 	case len(args) == 1 && args[0] == "serve":
-		return withStore(ctx, logger, lookup, func(cfg config.Config, st *store.Store) int {
+		return withStore(ctx, logger, level, lookup, func(cfg config.Config, st *store.Store) int {
 			return serve(ctx, cfg, st, logger)
 		})
 	case len(args) >= 2 && args[0] == "keys":
 		command, ok := parseKeysCommand(args[1:])
 		if !ok {
-			logger.Error(usage)
+			logger.ErrorContext(ctx, usage)
 
 			return 2
 		}
 
-		return withStore(ctx, logger, lookup, func(cfg config.Config, st *store.Store) int {
+		return withStore(ctx, logger, level, lookup, func(cfg config.Config, st *store.Store) int {
 			return command.run(ctx, cfg, st, stdout, logger)
 		})
 	case len(args) >= 2 && args[0] == "jobs":
 		command, ok := parseJobsCommand(args[1:])
 		if !ok {
-			logger.Error(usage)
+			logger.ErrorContext(ctx, usage)
 
 			return 2
 		}
 
-		return withStore(ctx, logger, lookup, func(cfg config.Config, st *store.Store) int {
+		return withStore(ctx, logger, level, lookup, func(cfg config.Config, st *store.Store) int {
 			return command.run(ctx, cfg, st, stdout, logger)
 		})
 	default:
-		logger.Error(usage)
+		logger.ErrorContext(ctx, usage)
 
 		return 2
 	}
 }
 
-// withStore loads configuration, opens the store, and runs fn with both.
-func withStore(ctx context.Context, logger *slog.Logger, lookup func(string) (string, bool), fn func(config.Config, *store.Store) int) int {
+// withStore loads configuration, applies its log level, opens the store, and runs fn with both.
+func withStore(
+	ctx context.Context,
+	logger *slog.Logger,
+	level *slog.LevelVar,
+	lookup func(string) (string, bool),
+	fn func(config.Config, *store.Store) int,
+) int {
 	cfg, err := config.Load(lookup)
 	if err != nil {
-		logger.Error("invalid configuration", "error", err)
+		logger.ErrorContext(ctx, "invalid configuration", "error", err)
 
 		return 1
 	}
+	level.Set(cfg.LogLevel)
 	st, err := store.Open(ctx, cfg.DataDir)
 	if err != nil {
-		logger.Error("open store", "error", err)
+		logger.ErrorContext(ctx, "open store", "error", err)
 
 		return 1
 	}
 	defer func() {
 		if err := st.Close(); err != nil {
-			logger.Error("close store", "error", err)
+			logger.ErrorContext(ctx, "close store", "error", err)
 		}
 	}()
 
@@ -93,32 +104,42 @@ func withStore(ctx context.Context, logger *slog.Logger, lookup func(string) (st
 
 func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog.Logger) int {
 	if cfg.RestoreAPIKeyOnStartup {
-		if err := auth.RestoreAPIKey(ctx, st, cfg.APIKey, time.Now().UTC()); err != nil {
-			logger.Error("restore API key", "error", err)
+		record, created, err := auth.RestoreAPIKey(ctx, st, cfg.APIKey, time.Now().UTC())
+		if err != nil {
+			logger.ErrorContext(ctx, "restore API key", "error", err)
 			return 1
 		}
+		message, level := "API key already present", slog.LevelInfo
+		if created {
+			message = "API key restored"
+		}
+		revoked := !record.RevokedAt.IsZero()
+		if revoked {
+			level = slog.LevelWarn
+		}
+		logger.Log(ctx, level, message, "key_id", record.ID, "key_name", record.Name, "revoked", revoked)
 	}
 	layout, err := storage.New(cfg.DataDir)
 	if err != nil {
-		logger.Error("prepare storage", "error", err)
+		logger.ErrorContext(ctx, "prepare storage", "error", err)
 
 		return 1
 	}
 	policy, err := urlpolicy.New(cfg.AllowedPlatforms, cfg.MaxURLLength)
 	if err != nil {
-		logger.Error("configure URL policy", "error", err)
+		logger.ErrorContext(ctx, "configure URL policy", "error", err)
 
 		return 1
 	}
 	cleaner := cleanup.New(st, layout, logger)
 	if err := cleaner.Recover(ctx); err != nil {
-		logger.Error("recover state", "error", err)
+		logger.ErrorContext(ctx, "recover state", "error", err)
 
 		return 1
 	}
 	components, err := newExtractorComponents(cfg)
 	if err != nil {
-		logger.Error("configure extractors")
+		logger.ErrorContext(ctx, "configure extractors")
 		return 1
 	}
 	jobWorker := worker.New(st, layout, components.extractor, worker.Settings{
@@ -151,8 +172,20 @@ func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog
 		},
 		Logger: logger,
 	})
+	logger.InfoContext(ctx, "starting server",
+		"http_addr", cfg.HTTPAddr,
+		"public_url", cfg.PublicURL,
+		"allowed_platforms", cfg.AllowedPlatforms,
+		"log_level", cfg.LogLevel.String(),
+		"job_timeout", cfg.JobTimeout.String(),
+		"job_retention", cfg.JobRetention.String(),
+		"token_ttl", cfg.TokenTTL.String(),
+		"max_queued_jobs", cfg.MaxQueuedJobs,
+		"max_job_items", cfg.MaxJobItems,
+		"max_job_bytes", cfg.MaxJobBytes,
+		"min_free_bytes", cfg.MinFreeBytes)
 	if err := app.Run(ctx, cfg.HTTPAddr, router, logger, components.run, jobWorker.Run, cleaner.Run); err != nil {
-		logger.Error("application stopped unexpectedly", "error", err)
+		logger.ErrorContext(ctx, "application stopped unexpectedly", "error", err)
 
 		return 1
 	}

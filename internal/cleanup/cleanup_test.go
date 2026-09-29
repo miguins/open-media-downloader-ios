@@ -13,6 +13,7 @@ import (
 
 	"github.com/miguins/open-media-downloader-ios/internal/id"
 	"github.com/miguins/open-media-downloader-ios/internal/job"
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
@@ -42,7 +43,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	logs := &bytes.Buffer{}
-	c := New(st, layout, slog.New(slog.NewJSONHandler(logs, nil)))
+	c := New(st, layout, logging.New(logs, slog.LevelDebug))
 	c.now = func() time.Time { return now }
 
 	return &fixture{cleaner: c, store: st, dataDir: dataDir, logs: logs}

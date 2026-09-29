@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"github.com/miguins/open-media-downloader-ios/internal/auth"
 	"github.com/miguins/open-media-downloader-ios/internal/id"
 	"github.com/miguins/open-media-downloader-ios/internal/job"
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/readiness"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
@@ -34,6 +36,7 @@ type apiFixture struct {
 	ownerID  string
 	otherKey string
 	notified int
+	logs     *bytes.Buffer
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -53,7 +56,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &apiFixture{store: st, layout: layout, dataDir: dataDir}
+	f := &apiFixture{store: st, layout: layout, dataDir: dataDir, logs: &bytes.Buffer{}}
 	for _, name := range []string{"owner", "other"} {
 		plaintext, record := auth.Generate(name, time.Now().UTC())
 		if err := st.CreateAPIKey(ctx, record); err != nil {
@@ -65,7 +68,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 			f.otherKey = plaintext
 		}
 	}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := logging.New(f.logs, slog.LevelDebug)
 	f.handler = NewRouter(Dependencies{
 		Readiness:     readiness.New(),
 		Authenticator: auth.NewAuthenticator(st, logger),

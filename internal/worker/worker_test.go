@@ -16,6 +16,7 @@ import (
 
 	"github.com/miguins/open-media-downloader-ios/internal/extractor"
 	"github.com/miguins/open-media-downloader-ios/internal/job"
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
@@ -68,7 +69,7 @@ func newFixture(t *testing.T, ext Extractor, settings Settings) *fixture {
 		t.Fatal(err)
 	}
 	logs := &syncBuffer{}
-	w := New(st, layout, ext, settings, slog.New(slog.NewJSONHandler(logs, nil)))
+	w := New(st, layout, ext, settings, logging.New(logs, slog.LevelInfo))
 	w.watchInterval = 5 * time.Millisecond
 	w.pollInterval = 10 * time.Millisecond
 

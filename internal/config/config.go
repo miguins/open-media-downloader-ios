@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"log/slog"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -30,6 +31,7 @@ type Tools struct {
 
 // Config contains validated application configuration.
 type Config struct {
+	LogLevel               slog.Level
 	RestoreAPIKeyOnStartup bool
 	APIKey                 string
 	HTTPAddr               string
@@ -59,6 +61,7 @@ type loader struct {
 func Load(lookup func(string) (string, bool)) (Config, error) {
 	l := &loader{lookup: lookup}
 	cfg := Config{
+		LogLevel:         l.logLevel("OMDI_LOG_LEVEL"),
 		HTTPAddr:         l.httpAddr("OMDI_HTTP_ADDR", ":8080"),
 		DataDir:          l.path("OMDI_DATA_DIR", "/data"),
 		AllowedPlatforms: l.platforms("OMDI_ALLOWED_PLATFORMS"),
@@ -130,6 +133,22 @@ func (l *loader) value(name string) (string, bool) {
 	}
 
 	return value, true
+}
+
+func (l *loader) logLevel(name string) slog.Level {
+	value, ok := l.value(name)
+	if !ok {
+		return slog.LevelInfo
+	}
+	levels := map[string]slog.Level{
+		"debug": slog.LevelDebug, "info": slog.LevelInfo, "warn": slog.LevelWarn, "error": slog.LevelError,
+	}
+	level, known := levels[value]
+	if !known {
+		l.fail(name + " must be debug, info, warn, or error")
+	}
+
+	return level
 }
 
 func (l *loader) httpAddr(name, fallback string) string {

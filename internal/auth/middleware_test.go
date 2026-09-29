@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
 
@@ -113,22 +114,26 @@ func TestMiddlewareRejectsInvalidCredentials(t *testing.T) {
 	revoked.RevokedAt = now
 	keys.keys[revoked.ID] = revoked
 
-	tests := map[string]*http.Request{
-		"missing header":    newRequest(),
-		"empty header":      newRequest(""),
-		"basic scheme":      newRequest("Basic " + plaintext),
-		"no scheme":         newRequest(plaintext),
-		"malformed key":     newRequest("Bearer omdi_short"),
-		"unknown key":       newRequest("Bearer " + unknown),
-		"wrong secret":      newRequest("Bearer " + wrongSecret),
-		"revoked key":       newRequest("Bearer " + revokedPlaintext),
-		"duplicate headers": newRequest("Bearer "+plaintext, "Bearer "+plaintext),
-		"query string": httptest.NewRequestWithContext(context.Background(), http.MethodGet,
-			"/protected?api_key="+plaintext+"&access_token="+plaintext, nil),
+	tests := map[string]struct {
+		request *http.Request
+		reason  string
+	}{
+		"missing header":    {newRequest(), "missing_credentials"},
+		"empty header":      {newRequest(""), "missing_credentials"},
+		"basic scheme":      {newRequest("Basic " + plaintext), "missing_credentials"},
+		"no scheme":         {newRequest(plaintext), "missing_credentials"},
+		"malformed key":     {newRequest("Bearer omdi_short"), "malformed_key"},
+		"unknown key":       {newRequest("Bearer " + unknown), "unknown_key"},
+		"wrong secret":      {newRequest("Bearer " + wrongSecret), "invalid_secret"},
+		"revoked key":       {newRequest("Bearer " + revokedPlaintext), "revoked_key"},
+		"duplicate headers": {newRequest("Bearer "+plaintext, "Bearer "+plaintext), "missing_credentials"},
+		"query string": {httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+			"/protected?api_key="+plaintext+"&access_token="+plaintext, nil), "missing_credentials"},
 	}
-	for name, request := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			response, owner := serve(a, request)
+			logs.Reset()
+			response, owner := serve(a, test.request)
 			if response.Code != http.StatusUnauthorized || owner != "" {
 				t.Fatalf("status = %d owner = %q; want 401", response.Code, owner)
 			}
@@ -138,13 +143,34 @@ func TestMiddlewareRejectsInvalidCredentials(t *testing.T) {
 			if got := response.Body.String(); got != "{\"error\":\"unauthorized\"}\n" {
 				t.Fatalf("body = %q", got)
 			}
+			if got := logs.String(); !strings.Contains(got, `"msg":"authentication rejected"`) ||
+				!strings.Contains(got, `"reason":"`+test.reason+`"`) {
+				t.Fatalf("logs = %s; want rejection reason %q", got, test.reason)
+			}
+			if got := logs.String(); strings.Contains(got, plaintext[32:]) || strings.Contains(got, keyID) ||
+				strings.Contains(got, revokedPlaintext[32:]) || strings.Contains(got, revoked.ID) {
+				t.Fatalf("logs disclosed credentials: %s", got)
+			}
 		})
 	}
 	if len(keys.touched) != 0 {
 		t.Fatal("failed authentication recorded key use")
 	}
-	if strings.Contains(logs.String(), plaintext[32:]) || strings.Contains(logs.String(), keyID) {
-		t.Fatalf("logs disclosed credentials: %s", logs.String())
+}
+
+func TestMiddlewareAddsKeyToLogScope(t *testing.T) {
+	a, keys, plaintext, _ := newFixture(t)
+	keyID, _, _ := Parse(plaintext)
+	ctx := logging.With(context.Background())
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/protected", nil)
+	request.Header.Set("Authorization", "Bearer "+plaintext)
+	serve(a, request)
+
+	var logs bytes.Buffer
+	logging.New(&logs, slog.LevelInfo).InfoContext(ctx, "request completed")
+	if got := logs.String(); !strings.Contains(got, `"key_id":"`+keyID+`"`) ||
+		!strings.Contains(got, `"key_name":"`+keys.keys[keyID].Name+`"`) || strings.Contains(got, plaintext[32:]) {
+		t.Fatalf("logs = %s; want the key ID and name without the secret", got)
 	}
 }
 
@@ -187,5 +213,12 @@ func TestNewAuthenticatorUsesWallClock(t *testing.T) {
 	a := NewAuthenticator(&fakeKeys{}, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	if got := a.now(); time.Since(got) > time.Minute {
 		t.Fatalf("now() = %v", got)
+	}
+}
+
+func TestRejectionIsUnauthorized(t *testing.T) {
+	err := error(rejectedRevoked)
+	if !errors.Is(err, ErrUnauthorized) || err.Error() != "auth: unauthorized: revoked_key" {
+		t.Fatalf("rejection = %v; want an ErrUnauthorized with its reason", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
 )
@@ -48,8 +49,13 @@ func (c *Cleaner) Recover(ctx context.Context) error {
 	if err := c.layout.ClearWork(); err != nil {
 		return fmt.Errorf("cleanup: clear work directories: %w", err)
 	}
+	orphans, err := c.sweepOrphans(ctx)
+	if err != nil {
+		return err
+	}
+	c.logger.InfoContext(ctx, "recovery completed", "interrupted_jobs", failed, "orphaned_directories", orphans)
 
-	return c.sweepOrphans(ctx)
+	return nil
 }
 
 // Run sweeps periodically until ctx is canceled.
@@ -66,25 +72,37 @@ func (c *Cleaner) Run(ctx context.Context) error {
 	}
 }
 
-// sweep performs one cleanup pass. Failures are logged and retried on the next pass.
+// sweep performs one cleanup pass under its own trace and logs a summary, at debug level when
+// nothing was removed. Failures are logged and retried on the next pass.
 func (c *Cleaner) sweep(ctx context.Context) {
+	ctx = logging.NewTrace(ctx)
 	now := c.now()
-	if _, err := c.store.DeleteExpiredDownloadTokens(ctx, now); err != nil {
+	tokens, err := c.store.DeleteExpiredDownloadTokens(ctx, now)
+	if err != nil {
 		c.logger.ErrorContext(ctx, "delete expired download tokens failed")
 	}
-	c.removeExpiredJobs(ctx, now)
-	if err := c.sweepOrphans(ctx); err != nil {
+	jobs := c.removeExpiredJobs(ctx, now)
+	orphans, err := c.sweepOrphans(ctx)
+	if err != nil {
 		c.logger.ErrorContext(ctx, "sweep orphaned job directories failed")
 	}
+	level := slog.LevelDebug
+	if tokens+int64(jobs+orphans) > 0 {
+		level = slog.LevelInfo
+	}
+	c.logger.Log(ctx, level, "cleanup sweep completed",
+		"expired_tokens", tokens, "expired_jobs", jobs, "orphaned_directories", orphans)
 }
 
-func (c *Cleaner) removeExpiredJobs(ctx context.Context, now time.Time) {
+// removeExpiredJobs removes expired jobs with their files and returns how many were removed.
+func (c *Cleaner) removeExpiredJobs(ctx context.Context, now time.Time) int {
 	ids, err := c.store.ExpiredJobIDs(ctx, now)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "list expired jobs failed")
 
-		return
+		return 0
 	}
+	removed := 0
 	for _, jobID := range ids {
 		// Remove files before the row, so a failure leaves the row for the next pass instead of orphaning files.
 		if err := c.layout.RemoveJob(jobID); err != nil {
@@ -94,27 +112,34 @@ func (c *Cleaner) removeExpiredJobs(ctx context.Context, now time.Time) {
 		}
 		if err := c.store.DeleteJob(ctx, jobID); err != nil && !errors.Is(err, store.ErrNotFound) {
 			c.logger.ErrorContext(ctx, "delete expired job failed", "job_id", jobID)
+
+			continue
 		}
+		removed++
 	}
+
+	return removed
 }
 
-// sweepOrphans removes job directories that have no job row.
-func (c *Cleaner) sweepOrphans(ctx context.Context) error {
+// sweepOrphans removes job directories that have no job row and returns how many were removed.
+func (c *Cleaner) sweepOrphans(ctx context.Context) (int, error) {
 	ids, err := c.layout.JobDirIDs()
 	if err != nil {
-		return fmt.Errorf("cleanup: list job directories: %w", err)
+		return 0, fmt.Errorf("cleanup: list job directories: %w", err)
 	}
+	removed := 0
 	for _, jobID := range ids {
 		exists, err := c.store.JobExists(ctx, jobID)
 		if err != nil {
-			return fmt.Errorf("cleanup: check job: %w", err)
+			return removed, fmt.Errorf("cleanup: check job: %w", err)
 		}
 		if !exists {
 			if err := c.layout.RemoveJob(jobID); err != nil {
-				return fmt.Errorf("cleanup: remove orphaned job directory: %w", err)
+				return removed, fmt.Errorf("cleanup: remove orphaned job directory: %w", err)
 			}
+			removed++
 		}
 	}
 
-	return nil
+	return removed, nil
 }

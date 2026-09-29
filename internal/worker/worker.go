@@ -107,7 +107,9 @@ func (w *Worker) runOnce(ctx context.Context) bool {
 		return false
 	}
 	if err != nil {
-		w.logger.ErrorContext(ctx, "claim job failed")
+		if ctx.Err() == nil {
+			w.logger.ErrorContext(ctx, "claim job failed")
+		}
 
 		return false
 	}

@@ -134,3 +134,16 @@ func TestJobLogsWithoutKeyName(t *testing.T) {
 		}
 	}
 }
+
+func TestShutdownDoesNotLogClaimFailure(t *testing.T) {
+	f := newFixture(t, writeFile("out.mp4", "video/mp4", "media"), defaultSettings())
+	f.enqueue(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if f.worker.runOnce(ctx) {
+		t.Fatal("runOnce() = true with a canceled context")
+	}
+	if got := f.logs.String(); got != "" {
+		t.Fatalf("logs = %s; want no claim failure during shutdown", got)
+	}
+}

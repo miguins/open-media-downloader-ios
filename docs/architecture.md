@@ -6,7 +6,7 @@ Phase 3 is implemented. The service combines the authenticated job API, SQLite q
 
 ## Runtime and boundaries
 
-One Go binary owns the HTTP server and background work. `cmd/omdi` composes configuration, storage, URL policy, the real extractor, worker, cleaner, and readiness checks. Package boundaries remain focused: `internal/api` owns HTTP contracts, `internal/store` persistence, `internal/storage` private file ingestion, `internal/urlpolicy` normalization and egress policy, `internal/extractor` tools and routing, and `internal/worker` job execution.
+One Go binary owns the HTTP server and background work. `cmd/omdi` composes configuration, storage, URL policy, the real extractor, worker, cleaner, and readiness checks. Package boundaries remain focused: `internal/api` owns HTTP contracts, `internal/logging` trace IDs and scoped log attributes, `internal/store` persistence, `internal/storage` private file ingestion, `internal/urlpolicy` normalization and egress policy, `internal/extractor` tools and routing, and `internal/worker` job execution.
 
 Production uses `extractor.Real`. YouTube, Vimeo, TikTok, Instagram, and Reddit route statically to the `yt-dlp` adapter; X routes to `gallery-dl`. Each platform uses the tool that extracts it without credentials. Instagram runs `yt-dlp` in a post-media mode that also delivers photo entries through their thumbnails. The adapter hands Vimeo and Reddit URLs to `yt-dlp` in their logged-out forms, the Vimeo embed player and the Reddit comments route, without changing the stored job URL. The Bruno collection builds the existing fake extractor only with the private `omdi_testextractor` build tag, keeping required executable contracts offline without adding a runtime switch.
 
@@ -16,11 +16,13 @@ The API authenticates the owner, canonicalizes exactly one direct public-post UR
 
 ffprobe classifies local content from a closed metadata schema; extensions are never trusted. Approved iOS-compatible media passes through. H.264 with optional AAC in a compatible non-MP4 container may be remuxed locally by FFmpeg using stream copy, reinspected, and transactionally installed. No heavy transcoding occurs. Storage ingests validated files under server-generated names, and polling issues short-lived opaque download tokens.
 
+A failed extraction becomes a `Failure` with a fixed `error_detail`: a SIGKILL the runner did not send means the kernel killed the tool, known error-line patterns name platform refusals, media-tool and validation failures have their own details, and the egress session's rejection and failure counts explain otherwise unrecognized failures. The worker stores the detail, retries transient details once, and logs the tool's exit status. Every log line carries a trace ID from a context-scoped `slog` handler; requests, job attempts, cleanup passes, and CLI invocations each start a trace.
+
 ## Security invariants
 
 Every extractor connection is resolved and checked for public addressing at connection time. The job-scoped proxy limits schemes, ports, redirects, response headers, and aggregate transferred bytes, including CONNECT tunnels. Subprocesses receive explicit arguments, isolated environments, bounded diagnostics, context cancellation, and process-group cleanup.
 
-URLs, remote data, filenames, paths, metadata, and diagnostics are attacker-controlled. Work remains confined to private server directories; symlinks, hard links, traversal, nested output, sidecars, incompatible codecs, excess items, and excess bytes fail closed. Authentication, owner isolation, restrictive file permissions, disk reservations, timeouts, one-worker concurrency, the 1 GiB memory limit, and the 64-PID limit remain enforced. Logs and client errors do not expose secrets, URLs, internal paths, or raw diagnostics.
+URLs, remote data, filenames, paths, metadata, and diagnostics are attacker-controlled. Work remains confined to private server directories; symlinks, hard links, traversal, nested output, sidecars, incompatible codecs, excess items, and excess bytes fail closed. Authentication, owner isolation, restrictive file permissions, disk reservations, timeouts, one-worker concurrency, the 1 GiB memory limit, and the 64-PID limit remain enforced. Logs and client errors do not expose secrets, URLs, internal paths, or raw diagnostics; only the `debug` level adds bounded, sanitized tool error lines.
 
 ## Explicit exclusions
 

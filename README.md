@@ -55,6 +55,9 @@ Unset variables use their defaults. A variable that is set but empty, surrounded
 | Variable | Default | Rule |
 | --- | --- | --- |
 | `OMDI_HTTP_ADDR` | `:8080` | `host:port`, port 1–65535. |
+| `OMDI_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
+| `OMDI_RESTORE_API_KEY_ON_STARTUP` | `false` | `true` or `false`; see [Startup key restoration](#startup-key-restoration). |
+| `OMDI_API_KEY` | unset | Required when restoration is enabled: a key in the `omdi_<id>_<secret>` form. Ignored otherwise. |
 | `OMDI_DATA_DIR` | `/data` | Absolute, clean path to a real directory; created with mode `0700` when missing. Holds `omdi.db` (mode `0600`). |
 | `OMDI_ALLOWED_PLATFORMS` | `youtube,instagram,tiktok,x,reddit,vimeo` | Comma-separated subset of supported platforms. |
 | `OMDI_MAX_URL_LENGTH` | `2048` | Integer 256–8192. |
@@ -86,6 +89,15 @@ make key-purge            # deletes every revoked key with all of its jobs and f
 
 Revoked keys stay listed until `make key-purge` removes them. Names contain 1–64 letters, digits, `.`, `_`, or `-`. Clients send keys as `Authorization: Bearer <key>`; query-string keys are never accepted.
 
+### Startup key restoration
+
+Hosts whose data directory does not survive restarts lose every key along with the database. Setting `OMDI_RESTORE_API_KEY_ON_STARTUP=true` makes `omdi serve` insert `OMDI_API_KEY` before it starts listening whenever that key is missing, so clients keep working after data loss. Create the key once with `make key-create` and store it in the host's secret configuration.
+
+- Only the SHA-256 hash of the secret is stored. A restored key is named `startup-<id>`.
+- An existing record is never changed, and a record with the same ID but a different secret stops startup.
+- A revocation lasts only as long as the database. To withdraw a restored key permanently, remove or replace `OMDI_API_KEY`.
+- Restoration applies only to `omdi serve`; the `keys` and `jobs` commands ignore it.
+
 ## Jobs and downloads
 
 ```bash
@@ -99,7 +111,27 @@ curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
 - `POST /v1/jobs` queues a job (`202`). Each key may have `OMDI_MAX_QUEUED_JOBS` queued or running jobs.
 - `GET /v1/jobs/{id}` returns the status. For a succeeded job, each item carries a `download_url` that expires after `OMDI_TOKEN_TTL`; every poll issues fresh links and invalidates earlier ones.
 - `DELETE /v1/jobs/{id}` cancels a queued or running job.
-- `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`.
+- `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`. `HEAD` returns the same headers without the body.
+
+A failed job reports a fixed `error` code. For `extraction_failed`, `error_detail` gives the reason, derived from fixed patterns in the media tools' output and never from the output itself:
+
+| `error_detail` | Meaning |
+| --- | --- |
+| `out_of_memory` | A media tool was killed by `SIGKILL`, usually by the kernel for lack of memory. |
+| `login_required` | The platform requires a signed-in account. |
+| `blocked` | The platform asked to confirm the client is not a bot, which is common from datacenter addresses. |
+| `forbidden` | The platform refused a request with HTTP 403. |
+| `rate_limited` | The platform limited the request rate. |
+| `unavailable` | The post is private, removed, or does not exist. |
+| `geo_restricted`, `age_restricted` | The platform restricts the post by region or age. |
+| `no_media` | The post has no downloadable format. |
+| `network_error` | A destination did not resolve or could not be reached. |
+| `egress_denied` | The egress proxy refused a destination. |
+| `invalid_output` | The downloaded files did not pass validation. |
+| `processing_failed` | ffprobe or FFmpeg failed on the downloaded files. |
+| `tool_error` | The tool failed without a known pattern. |
+
+Failures detailed as `forbidden`, `rate_limited`, or `network_error` are retried once after five seconds, from an empty work directory and within the same `OMDI_JOB_TIMEOUT`.
 
 Each job accepts exactly one public post URL; profiles, channels, playlists, feeds, and collections are rejected. YouTube, Vimeo, TikTok, Instagram, and Reddit route through `yt-dlp`; X routes through `gallery-dl`. Instagram links that start with the account handle, such as `/{handle}/p/{shortcode}/`, are accepted and stored without the handle. A carousel remains one job with up to `OMDI_MAX_JOB_ITEMS` ordered results (20 by default). Outputs are compatibility-first MP4/M4A, MP3, JPEG, PNG, WebP, GIF, or QuickTime media. FFmpeg is used only for local H.264/AAC stream-copy remuxing; incompatible codecs are rejected instead of transcoded.
 
@@ -110,6 +142,16 @@ make job-list
 make job-delete ID=<id>        # refuses running jobs
 make job-purge [OWNER=<key-id>] # removes every job, including running ones
 ```
+
+## Logs
+
+The service writes one JSON object per line to standard error. Every line carries a `trace_id`: each HTTP request has one, returned in the `X-Trace-Id` response header, and so do each job attempt, each cleanup pass, and each CLI invocation. Request lines add the authenticated `key_id` and `key_name`, and job lines add `job_id` and `platform`, so a request that creates a job and the worker's run of it are joined by `job_id`.
+
+- `info` logs one `request completed` line per request with the route pattern, status, size, and duration, plus job, download, authentication-rejection, cleanup, and startup events. Successful health checks are not logged.
+- A `job failed` line includes `error_detail`, the failing `tool`, its `exit_code` or terminating `signal`, and the egress proxy's `egress_rejected` and `egress_failures` counts.
+- `debug` adds up to five `extractor diagnostics` lines per failure: the tool's error lines with URLs, paths, and post IDs removed, non-ASCII characters replaced, and each line truncated to 240 characters. Enable it only while investigating failures.
+
+Logs never include API keys, download tokens, submitted URLs, or internal paths; routes are logged by pattern, such as `/v1/downloads/{token}`.
 
 ## Bruno collection
 
@@ -184,7 +226,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed`. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next, followed by Phase 5 bulk ZIP downloads for multi-item jobs. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
+There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed` with `error_detail` `login_required` or `blocked`; anti-bot checks are more frequent from datacenter addresses than from residential networks. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next, followed by Phase 5 bulk ZIP downloads for multi-item jobs. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

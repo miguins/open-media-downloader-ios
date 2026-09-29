@@ -131,6 +131,39 @@ type ProxySession struct {
 	conns     map[net.Conn]struct{}
 	remaining int64
 	err       error
+	stats     EgressStats
+}
+
+// EgressStats counts how a session's requests failed. It never records destinations.
+type EgressStats struct {
+	// Rejected counts requests refused by the destination policy.
+	Rejected int
+	// UpstreamFailures counts destinations that did not resolve or could not be reached.
+	UpstreamFailures int
+}
+
+// Stats returns the session's failure counts.
+func (s *ProxySession) Stats() EgressStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stats
+}
+
+func (s *ProxySession) recordRejected() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stats.Rejected++
+}
+
+// recordFailure counts a failed upstream attempt as a policy rejection or a network failure.
+func (s *ProxySession) recordFailure(err error) {
+	if errors.Is(err, ErrNonPublicAddress) && !errors.Is(err, ErrUnresolvedHost) {
+		s.recordRejected()
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stats.UpstreamFailures++
 }
 
 // URL returns the loopback proxy URL passed to the extractor.
@@ -273,6 +306,7 @@ func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.User != nil || r.URL.Opaque != "" || r.URL.Fragment != "" || (r.URL.Scheme != "http" && r.URL.Scheme != "https") {
+		s.recordRejected()
 		http.Error(w, "egress request rejected", http.StatusBadGateway)
 		return
 	}
@@ -281,6 +315,7 @@ func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		port = "443"
 	}
 	if _, err := proxyAddress(r.URL.Host, port); err != nil {
+		s.recordRejected()
 		http.Error(w, "egress request rejected", http.StatusBadGateway)
 		return
 	}
@@ -364,11 +399,13 @@ func (p *Proxy) forwardHTTP(w http.ResponseWriter, r *http.Request, s *ProxySess
 	removeProxyHeaders(out.Header)
 	resp, err := transport.RoundTrip(out)
 	if err != nil {
+		s.recordFailure(err)
 		http.Error(w, "egress upstream unavailable", http.StatusBadGateway)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusSwitchingProtocols {
+		s.recordRejected()
 		http.Error(w, "egress request rejected", http.StatusBadGateway)
 		return
 	}
@@ -405,11 +442,13 @@ type sessionWriter struct {
 func (p *Proxy) connect(w http.ResponseWriter, r *http.Request, s *ProxySession) {
 	address, err := proxyAddress(r.URL.Host, "443")
 	if err != nil || r.URL.User != nil || r.URL.Scheme != "" || r.URL.Path != "" || r.URL.RawQuery != "" || r.URL.Fragment != "" || r.URL.Opaque != "" {
+		s.recordRejected()
 		http.Error(w, "egress request rejected", http.StatusBadGateway)
 		return
 	}
 	upstream, err := p.dial(r.Context(), s, "tcp", address)
 	if err != nil {
+		s.recordFailure(err)
 		http.Error(w, "egress upstream unavailable", http.StatusBadGateway)
 		return
 	}

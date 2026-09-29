@@ -15,6 +15,10 @@ const resolveTimeout = 5 * time.Second
 // ErrNonPublicAddress reports a destination that is not a public unicast address.
 var ErrNonPublicAddress = errors.New("destination is not a public address")
 
+// ErrUnresolvedHost accompanies ErrNonPublicAddress when a host has no addresses, which is a
+// network failure rather than a policy violation.
+var ErrUnresolvedHost = errors.New("host did not resolve")
+
 // globalUnicastIPv6 is the only IPv6 range considered for public destinations.
 var globalUnicastIPv6 = netip.MustParsePrefix("2000::/3")
 
@@ -67,7 +71,7 @@ func CheckResolved(ctx context.Context, resolver Resolver, host string) error {
 
 	addrs, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addrs) == 0 {
-		return fmt.Errorf("%w: host did not resolve", ErrNonPublicAddress)
+		return fmt.Errorf("%w: %w", ErrNonPublicAddress, ErrUnresolvedHost)
 	}
 	for _, addr := range addrs {
 		if !IsPublic(addr) {

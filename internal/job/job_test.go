@@ -149,8 +149,16 @@ func TestErrorDetails(t *testing.T) {
 			t.Fatalf("%s.Valid() = false", detail)
 		}
 	}
-	if len(ErrorDetails()) != 13 {
-		t.Fatalf("ErrorDetails() = %v; want 13 details", ErrorDetails())
+	if len(ErrorDetails()) != 14 {
+		t.Fatalf("ErrorDetails() = %v; want 14 details", ErrorDetails())
+	}
+	for detail, want := range map[ErrorDetail]bool{
+		DetailForbidden: true, DetailRateLimited: true, DetailNetworkError: true,
+		DetailBlocked: false, DetailLoginRequired: false, DetailOutOfMemory: false, DetailToolError: false,
+	} {
+		if detail.Transient() != want {
+			t.Fatalf("%s.Transient() = %v; want %v", detail, detail.Transient(), want)
+		}
 	}
 	if ErrorDetail("").Valid() || ErrorDetail("ERROR: raw extractor output").Valid() {
 		t.Fatal("unknown error detail accepted")

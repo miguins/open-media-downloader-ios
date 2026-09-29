@@ -434,12 +434,16 @@ components:
             - "null"
           description: >-
             Why an `extraction_failed` job failed, derived from fixed patterns in the media tools'
-            output; null for other errors. `tool_error` means no known pattern matched, and
-            `invalid_output` means the downloaded files did not pass validation.
+            output; null for other errors. `blocked` is an anti-bot check, while
+            `forbidden` is a refused request that may succeed later. `tool_error` means no known
+            pattern matched, and `invalid_output` means the downloaded files did not pass
+            validation. Jobs that fail with `forbidden`, `rate_limited`, or `network_error` have
+            already been attempted twice.
           enum:
             - out_of_memory
             - login_required
             - blocked
+            - forbidden
             - rate_limited
             - unavailable
             - geo_restricted

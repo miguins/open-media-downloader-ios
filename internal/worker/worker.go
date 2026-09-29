@@ -17,6 +17,9 @@ import (
 const (
 	defaultPollInterval  = 5 * time.Second
 	defaultWatchInterval = time.Second
+	defaultRetryDelay    = 5 * time.Second
+	// maxAttempts bounds extraction attempts for failures whose detail is transient.
+	maxAttempts = 2
 )
 
 var (
@@ -48,6 +51,7 @@ type Worker struct {
 	now           func() time.Time
 	pollInterval  time.Duration
 	watchInterval time.Duration
+	retryDelay    time.Duration
 }
 
 // New returns a Worker.
@@ -62,6 +66,7 @@ func New(st *store.Store, layout *storage.Layout, ext Extractor, settings Settin
 		now:           func() time.Time { return time.Now().UTC() },
 		pollInterval:  defaultPollInterval,
 		watchInterval: defaultWatchInterval,
+		retryDelay:    defaultRetryDelay,
 	}
 }
 
@@ -160,13 +165,7 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 	defer func() { <-watchDone }()
 	defer cancelTimeout()
 
-	files, err := w.extractor.Extract(jobCtx, extractor.Request{
-		URL:      j.SourceURL,
-		Platform: j.Platform,
-		WorkDir:  workDir,
-		MaxBytes: w.settings.MaxJobBytes,
-		MaxItems: w.settings.MaxJobItems,
-	})
+	files, err := w.extract(jobCtx, j, workDir)
 	switch cause := context.Cause(jobCtx); {
 	case ctx.Err() != nil:
 		w.logger.InfoContext(ctx, "job interrupted by shutdown", "duration_ms", w.elapsed(j))
@@ -197,6 +196,37 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 	}
 
 	w.complete(ctx, j, files)
+}
+
+// extract runs the extractor, retrying once after a delay when the failure is transient. Each attempt
+// starts from an empty work directory, and all attempts share the job's timeout and cancellation.
+func (w *Worker) extract(ctx context.Context, j job.Job, workDir string) ([]extractor.File, error) {
+	request := extractor.Request{
+		URL:      j.SourceURL,
+		Platform: j.Platform,
+		WorkDir:  workDir,
+		MaxBytes: w.settings.MaxJobBytes,
+		MaxItems: w.settings.MaxJobItems,
+	}
+	for attempt := 1; ; attempt++ {
+		files, err := w.extractor.Extract(ctx, request)
+		var failure *extractor.Failure
+		if attempt == maxAttempts || !errors.As(err, &failure) || !failure.Detail.Transient() {
+			return files, err
+		}
+		w.logger.InfoContext(ctx, "retrying extraction",
+			"attempt", attempt, "error_detail", string(failure.Detail), "delay_ms", w.retryDelay.Milliseconds())
+		timer := time.NewTimer(w.retryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, err
+		case <-timer.C:
+		}
+		if _, err := w.layout.PrepareWorkDir(j.ID); err != nil {
+			return nil, err
+		}
+	}
 }
 
 // watch cancels the run when the job row stops being running, which is how the API and CLI cancel work.

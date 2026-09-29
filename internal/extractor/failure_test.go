@@ -15,7 +15,8 @@ func TestClassifyStderr(t *testing.T) {
 	for stderr, want := range map[string]job.ErrorDetail{
 		"ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users.": job.DetailAgeRestricted,
 		"ERROR: [youtube] abc: Sign in to confirm you're not a bot. Use --cookies-from-browser":              job.DetailBlocked,
-		"ERROR: [vimeo] 1: Unable to download JSON metadata: HTTP Error 403: Forbidden":                      job.DetailBlocked,
+		"ERROR: [vimeo] 1: Unable to download JSON metadata: HTTP Error 403: Forbidden":                      job.DetailForbidden,
+		"ERROR: unable to download video data: HTTP Error 403: Forbidden":                                    job.DetailForbidden,
 		"ERROR: [youtube] abc: The uploader has not made this video available in your country":               job.DetailGeoRestricted,
 		"ERROR: [instagram] abc: Requested content is not available, rate-limit reached or login required":   job.DetailLoginRequired,
 		"[twitter][error] AuthorizationError: Login required to access this Tweet":                           job.DetailLoginRequired,

@@ -91,7 +91,8 @@ var stderrPatterns = []struct {
 	patterns []string
 }{
 	{job.DetailAgeRestricted, []string{"confirm your age", "age-restricted", "age restricted", "inappropriate for some users"}},
-	{job.DetailBlocked, []string{"not a bot", "http error 403", "403 forbidden", "403: forbidden"}},
+	{job.DetailBlocked, []string{"not a bot"}},
+	{job.DetailForbidden, []string{"http error 403", "403 forbidden", "403: forbidden"}},
 	{job.DetailGeoRestricted, []string{"in your country", "geo restrict", "geo-restrict", "from your location"}},
 	{job.DetailUnavailable, []string{
 		"private video", "video unavailable", "has been removed", "been deleted", "does not exist", "no longer available",

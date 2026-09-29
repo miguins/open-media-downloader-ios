@@ -78,6 +78,7 @@ const (
 	DetailOutOfMemory      ErrorDetail = "out_of_memory"
 	DetailLoginRequired    ErrorDetail = "login_required"
 	DetailBlocked          ErrorDetail = "blocked"
+	DetailForbidden        ErrorDetail = "forbidden"
 	DetailRateLimited      ErrorDetail = "rate_limited"
 	DetailUnavailable      ErrorDetail = "unavailable"
 	DetailGeoRestricted    ErrorDetail = "geo_restricted"
@@ -93,7 +94,7 @@ const (
 // ErrorDetails returns every error detail.
 func ErrorDetails() []ErrorDetail {
 	return []ErrorDetail{
-		DetailOutOfMemory, DetailLoginRequired, DetailBlocked, DetailRateLimited, DetailUnavailable,
+		DetailOutOfMemory, DetailLoginRequired, DetailBlocked, DetailForbidden, DetailRateLimited, DetailUnavailable,
 		DetailGeoRestricted, DetailAgeRestricted, DetailNoMedia, DetailNetworkError, DetailEgressDenied,
 		DetailInvalidOutput, DetailProcessingFailed, DetailToolError,
 	}
@@ -108,6 +109,11 @@ func (d ErrorDetail) Valid() bool {
 	}
 
 	return false
+}
+
+// Transient reports whether a failure with detail d may succeed when attempted again shortly.
+func (d ErrorDetail) Transient() bool {
+	return d == DetailForbidden || d == DetailRateLimited || d == DetailNetworkError
 }
 
 // Job is a request by one owner to download media from one normalized URL.

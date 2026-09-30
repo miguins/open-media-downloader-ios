@@ -9,3 +9,16 @@ services:
         mkdir -p "$$GOTMPDIR";
         go build -tags=omdi_testextractor -trimpath -o /home/omdi/.cache/go-build/omdi-dev ./cmd/omdi;
         exec /home/omdi/.cache/go-build/omdi-dev serve
+  bruno:
+    # Pass the temporary collection key explicitly: a local collection/.env would
+    # otherwise supply its own OMDI_API_KEY.
+    command:
+      - run
+      - .
+      - -r
+      - --env
+      - local
+      - --env-var
+      - baseUrl=http://app:8080
+      - --env-var
+      - apiKey=${OMDI_API_KEY:-}

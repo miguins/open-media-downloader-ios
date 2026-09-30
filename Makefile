@@ -134,6 +134,7 @@ ci:
 	$(MAKE) compose-check
 	sh scripts/test-real-smoke.sh
 	sh scripts/test-check-release-version.sh
+	sh scripts/test-check-release-ci.sh
 	$(MAKE) docker-build smoke image-scan
 	$(MAKE) production-smoke
 	$(MAKE) collection-test

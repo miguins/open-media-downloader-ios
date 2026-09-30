@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/miguins/open-media-downloader-ios
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check release version
+        id: version
+        run: sh scripts/check-release-version.sh "$GITHUB_REF_NAME" >>"$GITHUB_OUTPUT"
+
+      - name: Run all checks
+        run: make ci
+
+      - name: Clean up containers
+        if: always()
+        run: docker compose -f compose.development.yaml down --volumes --remove-orphans
+
+  image-amd64:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to the registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push by digest
+        id: build
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          docker buildx build --platform linux/amd64 --target runtime --provenance=false \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "$RUNNER_TEMP/metadata.json" .
+          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")" >>"$GITHUB_OUTPUT"
+
+  image-arm64:
+    needs: verify
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to the registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push by digest
+        id: build
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          docker buildx build --platform linux/arm64 --target runtime --provenance=false \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "$RUNNER_TEMP/metadata.json" .
+          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")" >>"$GITHUB_OUTPUT"
+
+  publish:
+    needs: [verify, image-amd64, image-arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to the registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Publish the multi-architecture image
+        id: manifest
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          AMD64_DIGEST: ${{ needs.image-amd64.outputs.digest }}
+          ARM64_DIGEST: ${{ needs.image-arm64.outputs.digest }}
+        run: |
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "$IMAGE@$AMD64_DIGEST" "$IMAGE@$ARM64_DIGEST"
+          echo "digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)" >>"$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          notes="Container image for linux/amd64 and linux/arm64:
+
+          \`\`\`
+          $IMAGE:$VERSION
+          $IMAGE@$DIGEST
+          \`\`\`
+
+          Verify its provenance with \`gh attestation verify oci://$IMAGE:$VERSION --repo $GITHUB_REPOSITORY\`."
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$GITHUB_REF_NAME" --generate-notes --notes "$notes"

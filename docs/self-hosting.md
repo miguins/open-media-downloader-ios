@@ -37,6 +37,41 @@ curl --fail http://127.0.0.1:8080/readyz
 
 The production project is named `omdi` and never shares containers or volumes with the development environment.
 
+## Prebuilt images
+
+Each [release](https://github.com/miguins/open-media-downloader-ios/releases) publishes the same runtime image for `linux/amd64` and `linux/arm64`:
+
+```text
+ghcr.io/miguins/open-media-downloader-ios:<version>
+```
+
+Images are tagged only with exact versions such as `0.4.0`; there is no `latest` tag, so an update is always a deliberate change.
+
+To use the image with Docker instead of building locally, create `compose.override.yaml` next to `compose.yaml`. Compose reads it automatically, and it keeps every setting of `compose.yaml` except the build:
+
+```yaml
+services:
+  app:
+    build: !reset null
+    image: ghcr.io/miguins/open-media-downloader-ios:0.4.0
+```
+
+Then start the service with `docker compose up --detach --wait`. The file is ignored by Git, so updating the checkout never conflicts with it.
+
+Platforms that deploy a prebuilt image can use the same reference. Configure them to:
+
+- route HTTP traffic to container port `8080` and use `/healthz` as the health check;
+- set `OMDI_PUBLIC_URL` and the other variables from [Configuration](../README.md#configuration) in their settings;
+- mount persistent storage at `/data`, or enable [startup key restoration](#hosts-without-persistent-storage) when none is available.
+
+### Verifying an image
+
+Every published image has a signed build provenance attestation that records the repository, commit, and workflow that built it. Verify it with the GitHub CLI:
+
+```bash
+gh attestation verify oci://ghcr.io/miguins/open-media-downloader-ios:0.4.0 --repo miguins/open-media-downloader-ios
+```
+
 ## Operation
 
 | Task | Command |
@@ -61,6 +96,8 @@ Logs are JSON lines with a `trace_id` on every line. Every HTTP response carries
 git pull
 docker compose up --build --detach --wait
 ```
+
+With a prebuilt image, change the version in `compose.override.yaml` and run `docker compose up --detach --wait`.
 
 Database migrations run automatically at startup. Pinned dependency updates arrive through the repository, so updating regularly keeps `yt-dlp` and `gallery-dl` able to extract platforms that change often.
 

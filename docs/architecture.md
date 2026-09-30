@@ -8,6 +8,8 @@ Phase 4 is implemented. The service combines the authenticated job API, SQLite q
 
 The `Dockerfile` builds a non-root `runtime` image with the pinned media tools. `compose.yaml` is the production deployment, project `omdi`: it runs that image with a persistent data volume, a read-only root filesystem, no capabilities, `no-new-privileges`, a 1 GiB memory limit, a 64-PID limit, and a loopback-published port meant to sit behind a tunnel or TLS reverse proxy. `compose.development.yaml`, project `omdi-dev`, compiles the source on start and adds the tools and Bruno services; the `Makefile` selects it. `make production-smoke` verifies the production file in CI.
 
+A pushed `vMAJOR.MINOR.PATCH` tag that matches the OpenAPI version starts the release workflow. It runs the complete CI suite, builds the `runtime` image natively on `linux/amd64` and `linux/arm64` runners, pushes each platform by digest, combines them into one manifest list tagged with the exact version in the GitHub Container Registry, attests its build provenance, and creates the GitHub release. No floating tags are published.
+
 ## Runtime and boundaries
 
 One Go binary owns the HTTP server and background work. `cmd/omdi` composes configuration, storage, URL policy, the real extractor, worker, cleaner, and readiness checks. Package boundaries remain focused: `internal/api` owns HTTP contracts, `internal/logging` trace IDs and scoped log attributes, `internal/store` persistence, `internal/storage` private file ingestion, `internal/urlpolicy` normalization and egress policy, `internal/extractor` tools and routing, and `internal/worker` job execution.

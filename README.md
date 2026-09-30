@@ -67,6 +67,8 @@ docker compose up --build --detach --wait
 docker compose exec app omdi keys create --name phone
 ```
 
+Each [release](https://github.com/miguins/open-media-downloader-ios/releases) also publishes a multi-architecture image, `ghcr.io/miguins/open-media-downloader-ios:<version>`, for hosts that should not build it; see [Prebuilt images](docs/self-hosting.md#prebuilt-images).
+
 The service speaks plain HTTP and publishes on loopback by default; put a tunnel or a TLS reverse proxy in front of it before using it over the internet. [Self-Hosting](docs/self-hosting.md) covers disk sizing, operation, updates, backups, remote access, and hosts without persistent storage. [iOS Shortcut](docs/shortcut.md) explains how to build the Shortcut that uses the server.
 
 ## Configuration
@@ -204,6 +206,7 @@ make collection-test
 | `make smoke` | Validate `/healthz` inside the production image. |
 | `make real-smoke URL=...` | Optionally exercise real extraction and network access, then purge temporary state. |
 | `make compose-check` | Verify the development service's hardening and memory and PID limits. |
+| `make workflow-lint` | Lint the GitHub Actions workflows with actionlint and ShellCheck. |
 | `make production-smoke` | Start `compose.yaml` in an isolated project, check its hardening, health, readiness, and key management, then remove it. |
 | `make compose-up` | Start the development service with Compose, attached to its logs. `make dev` is an alias. |
 | `make compose-up-detached` | Start the development service in the background and wait until it is healthy. |
@@ -216,6 +219,15 @@ make collection-test
 | `make job-list` | List jobs without their source URLs. |
 | `make job-delete ID=...` | Delete a job that is not running, with its files. |
 | `make job-purge [OWNER=...]` | Remove every job, or one key's jobs, including running ones. |
+
+## Releases
+
+Versions follow semantic versioning and equal `info.version` in `docs/openapi.yaml`. To release:
+
+1. Raise `info.version` in a commit, and push it.
+2. Tag that commit and push the tag: `git tag v0.5.0 && git push origin v0.5.0`.
+
+The release workflow rejects a tag that is not exactly `vMAJOR.MINOR.PATCH` or that differs from the OpenAPI version, runs the complete `make ci` suite, builds the image natively for `linux/amd64` and `linux/arm64`, publishes it under the exact version, attests its provenance, and creates the GitHub release. After the first release, confirm in the package settings that the image is public.
 
 ## Selected versions
 

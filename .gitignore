@@ -6,6 +6,9 @@ collection/.env
 collection/.env.*
 !collection/.env.example
 
+# Local Compose customization, such as using a published image
+compose.override.yaml
+
 # Runtime data and downloaded media
 data/
 downloads/

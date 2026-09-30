@@ -6,7 +6,7 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 4 — Packaging and documentation finalization is complete. Phase 5 is next.**
+**Phase 4.1 — Releases and published images is complete. Phase 5 is next.**
 
 The next development effort is **Phase 5 — Bulk archive downloads**.
 
@@ -73,6 +73,21 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 - Finalize security and self-hosting notes.
 
 Phase 0 provides working baselines for several of these deliverables. Phase 4 completes them against the finished feature set; those baselines do not make Phase 4 active.
+
+## Phase 4.1 — Releases and published images
+
+**Status: Complete** — [design](superpowers/specs/2026-09-30-phase-4-1-releases-design.md), [plan](superpowers/plans/2026-09-30-phase-4-1-releases.md)
+
+A continuation of Phase 4 packaging that publishes each version for self-hosters who do not want to build the image.
+
+- A release workflow triggered by a semantic version tag that matches the OpenAPI version.
+- The complete `make ci` suite on the tagged commit before anything is published.
+- A multi-architecture runtime image for `linux/amd64` and `linux/arm64`, built on native runners and published to the GitHub Container Registry under the exact version, never a floating tag.
+- A signed build provenance attestation for the published image.
+- A GitHub release with generated notes and the image reference and digest.
+- Workflow linting in CI, and documentation of prebuilt-image deployment and release verification.
+
+`compose.yaml` keeps building from source; the published image is a documented alternative.
 
 ## Phase 5 — Bulk archive downloads
 

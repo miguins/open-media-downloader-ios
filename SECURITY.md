@@ -2,7 +2,9 @@
 
 ## Supported versions
 
-The unreleased `main` branch is currently the only supported version. No published release exists yet.
+Security fixes are made on `main` and published in the next release. Only the latest release is supported; update to it before reporting an issue.
+
+Every published image carries a signed build provenance attestation. Verify an image before deploying it with `gh attestation verify oci://ghcr.io/miguins/open-media-downloader-ios:<version> --repo miguins/open-media-downloader-ios`.
 
 ## Reporting a vulnerability
 

@@ -6,9 +6,10 @@ TOOLS_RUN := $(COMPOSE) run --rm --no-deps tools
 APP_BINARY := /home/omdi/.cache/go-build/omdi-dev
 APP_RUN := $(COMPOSE) run --rm --no-deps -T
 APP_BUILD := mkdir -p "$$GOTMPDIR"; go build -trimpath -o $(APP_BINARY) ./cmd/omdi
+ACTIONLINT_IMAGE := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 TRIVY_IMAGE := aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
-.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check production-smoke compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
+.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check production-smoke workflow-lint compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
 
 bootstrap:
 	command -v docker >/dev/null
@@ -60,6 +61,9 @@ compose-check:
 
 production-smoke:
 	sh scripts/production-smoke.sh
+
+workflow-lint:
+	docker run --rm --volume "$(CURDIR):/repo:ro" --workdir /repo $(ACTIONLINT_IMAGE)
 
 compose-up:
 	$(COMPOSE) up --build
@@ -123,11 +127,13 @@ ci:
 	$(MAKE) test
 	$(MAKE) coverage
 	$(MAKE) lint
+	$(MAKE) workflow-lint
 	$(MAKE) vuln
 	$(MAKE) secret-scan
 	$(MAKE) build
 	$(MAKE) compose-check
 	sh scripts/test-real-smoke.sh
+	sh scripts/test-check-release-version.sh
 	$(MAKE) docker-build smoke image-scan
 	$(MAKE) production-smoke
 	$(MAKE) collection-test

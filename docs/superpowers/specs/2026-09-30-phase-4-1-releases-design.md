@@ -15,7 +15,7 @@ numbered so that Phase 5 keeps its number. It changes no application behavior.
 ## Goals
 
 - Publish a release for every semantic version tag, and only after the complete
-  `make ci` suite passes on the tagged commit.
+  `make ci` suite has passed for the tagged commit on `main`.
 - Publish the `runtime` image for `linux/amd64` and `linux/arm64` under the exact
   version, with a signed build provenance attestation.
 - Keep one version number: the tag, the image tag, and the OpenAPI version match.
@@ -53,8 +53,12 @@ releases, and only first-party actions are used: `actions/checkout`,
 `docker/setup-buildx-action`, and `actions/attest`. Registry login and release
 creation use the `docker` and `gh` CLIs preinstalled on GitHub-hosted runners.
 
-1. **verify** (`contents: read`): check out the tag, run the version check, run
-   `make ci`, and clean up the development project. It outputs the version.
+1. **verify** (`contents: read`, `actions: read`): check out the tag, run the version
+   check, and run `scripts/check-release-ci.sh`, which requires the tagged commit to
+   be on `main` and the CI workflow to have succeeded for it on a push to `main`,
+   waiting while CI is queued or running. It outputs the version. Running `make ci`
+   again would repeat the same checks on the same commit; `ci.yml` also runs only
+   for branches, so a tag push starts no CI run.
 2. **image-amd64** on `ubuntu-24.04` and **image-arm64** on `ubuntu-24.04-arm`
    (`contents: read`, `packages: write`): build the `runtime` target natively for
    one platform with `docker buildx build`, add
@@ -79,7 +83,9 @@ package settings.
 `.github/workflows/`, including the shell scripts in `run` steps through the
 bundled ShellCheck. `make ci` runs it. `scripts/test-check-release-version.sh`
 tests the version check against valid, malformed, prefixed, suffixed, and
-mismatched tags, and `make ci` runs it next to the real-smoke script test.
+mismatched tags, and `scripts/test-check-release-ci.sh` tests the CI gate with a
+fake `gh` against passing, pending, failed, canceled, timed-out, and off-`main`
+cases. `make ci` runs both next to the real-smoke script test.
 
 ## Documentation
 

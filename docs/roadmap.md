@@ -81,7 +81,7 @@ Phase 0 provides working baselines for several of these deliverables. Phase 4 co
 A continuation of Phase 4 packaging that publishes each version for self-hosters who do not want to build the image.
 
 - A release workflow triggered by a semantic version tag that matches the OpenAPI version.
-- The complete `make ci` suite on the tagged commit before anything is published.
+- A passing CI run for the tagged commit on `main` before anything is published.
 - A multi-architecture runtime image for `linux/amd64` and `linux/arm64`, built on native runners and published to the GitHub Container Registry under the exact version, never a floating tag.
 - A signed build provenance attestation for the published image.
 - A GitHub release with generated notes and the image reference and digest.

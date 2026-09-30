@@ -227,7 +227,7 @@ Versions follow semantic versioning and equal `info.version` in `docs/openapi.ya
 1. Raise `info.version` in a commit, and push it.
 2. Tag that commit and push the tag: `git tag v0.5.0 && git push origin v0.5.0`.
 
-The release workflow rejects a tag that is not exactly `vMAJOR.MINOR.PATCH` or that differs from the OpenAPI version, runs the complete `make ci` suite, builds the image natively for `linux/amd64` and `linux/arm64`, publishes it under the exact version, attests its provenance, and creates the GitHub release. After the first release, confirm in the package settings that the image is public.
+The release workflow rejects a tag that is not exactly `vMAJOR.MINOR.PATCH` or that differs from the OpenAPI version, requires the CI workflow to have passed for the tagged commit on `main`, waiting while it runs, builds the image natively for `linux/amd64` and `linux/arm64`, publishes it under the exact version, attests its provenance, and creates the GitHub release. After the first release, confirm in the package settings that the image is public.
 
 ## Selected versions
 

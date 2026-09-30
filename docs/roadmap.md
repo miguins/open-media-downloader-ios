@@ -6,11 +6,11 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 3 — Real extractors is complete. Phase 4 is next.**
+**Phase 4 — Packaging and documentation finalization is complete. Phase 5 is next.**
 
-The next development effort is **Phase 4 — Packaging and documentation finalization**. Phase 5 — Bulk archive downloads follows it.
+The next development effort is **Phase 5 — Bulk archive downloads**.
 
-The Phase 1 and Phase 2 documents under `docs/superpowers/records/` were consolidated at their handoffs and record delivered scope; they are not pre-implementation plans under the current Superpowers format. Phase 3 must follow the complete current workflow before implementation begins.
+The Phase 1 and Phase 2 documents under `docs/superpowers/records/` were consolidated at their handoffs and record delivered scope; they are not pre-implementation plans under the current Superpowers format. Phase 3 and later phases follow the complete current workflow before implementation begins.
 
 ## Phase 0 — Project foundation
 
@@ -63,7 +63,7 @@ Structured logging and liveness established in Phase 0 remain cross-cutting requ
 
 ## Phase 4 — Packaging and documentation finalization
 
-**Status: Planned**
+**Status: Complete** — [design](superpowers/specs/2026-09-29-phase-4-packaging-documentation-design.md), [plan](superpowers/plans/2026-09-29-phase-4-packaging-documentation.md)
 
 - Finalize Dockerfile and Compose for the complete runtime.
 - Complete the OpenAPI specification for every implemented endpoint.
@@ -85,6 +85,9 @@ A job with more than one item, such as a carousel, can be downloaded as one ZIP 
 - Rejected alternative: an authenticated `GET /v1/jobs/{id}/archive`. It is safe, but the link cannot be handed to Safari or a Shortcut file action without the `Authorization` header.
 - Open questions for the design specification: build the archive on demand or persist it until cleanup (on-demand saves disk but complicates `Content-Length` and `Range`); reuse `/v1/downloads/{token}` or add a dedicated route; archive naming.
 - Archive entries use the ZIP store method because media is already compressed. The archive is bounded by the existing `OMDI_MAX_JOB_ITEMS` and `OMDI_MAX_JOB_BYTES` limits plus a fixed per-entry overhead.
+- Contract corrections found during Phase 4:
+  - Authentication `401` and `500` responses must send `Cache-Control: no-store` like every other JSON response, and the OpenAPI `Unauthorized` response must declare it.
+  - `GET /v1/downloads/{token}` returns `416 Range Not Satisfiable` with `Content-Range: bytes */<size>` for an unsatisfiable `Range`; the OpenAPI contract must declare it, with a test pinning the behavior.
 
 ## Delivery rules
 

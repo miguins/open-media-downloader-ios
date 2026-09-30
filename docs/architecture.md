@@ -2,7 +2,11 @@
 
 ## Current milestone
 
-Phase 3 is implemented. The service combines the authenticated job API, SQLite queue, one bounded worker, short-lived downloads, recovery and cleanup with real platform extraction. Implementation order and delivery status remain authoritative in the [Roadmap](roadmap.md).
+Phase 4 is implemented. The service combines the authenticated job API, SQLite queue, one bounded worker, short-lived downloads, recovery and cleanup with real platform extraction, and is packaged for self-hosting. Implementation order and delivery status remain authoritative in the [Roadmap](roadmap.md).
+
+## Packaging
+
+The `Dockerfile` builds a non-root `runtime` image with the pinned media tools. `compose.yaml` is the production deployment, project `omdi`: it runs that image with a persistent data volume, a read-only root filesystem, no capabilities, `no-new-privileges`, a 1 GiB memory limit, a 64-PID limit, and a loopback-published port meant to sit behind a tunnel or TLS reverse proxy. `compose.development.yaml`, project `omdi-dev`, compiles the source on start and adds the tools and Bruno services; the `Makefile` selects it. `make production-smoke` verifies the production file in CI.
 
 ## Runtime and boundaries
 

@@ -1,7 +1,7 @@
 openapi: 3.2.1
 info:
   title: OpenMediaDownloaderIOS API
-  version: 0.3.1
+  version: 0.4.0
 servers:
   - url: http://localhost:8080
 paths:
@@ -104,6 +104,8 @@ paths:
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
             Location:
               description: Path of the created job.
               schema:
@@ -148,6 +150,8 @@ paths:
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
           content:
             application/json:
               schema:
@@ -172,6 +176,8 @@ paths:
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
           content:
             application/json:
               schema:
@@ -216,13 +222,22 @@ paths:
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
         "404":
           description: The token is malformed, unknown, or expired.
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
 components:
   headers:
+    NoStore:
+      description: Responses must not be stored by clients or caches.
+      schema:
+        type: string
+        const: no-store
     TraceId:
       description: >-
         Identifier of this request in the server logs. Include it when reporting a problem;
@@ -241,6 +256,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -267,6 +284,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -278,6 +297,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -289,6 +310,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -300,6 +323,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -311,6 +336,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -322,6 +349,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -333,6 +362,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
       content:
         application/json:
           schema:
@@ -346,6 +377,8 @@ components:
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
         Content-Disposition:
           schema:
             type: string

@@ -19,3 +19,11 @@ All extractor network access uses a job-scoped loopback proxy. It permits only H
 Jobs are bounded by URL, request, byte, item, time, disk, diagnostic, memory, and PID limits. Output ingestion rejects traversal, symlinks, hard links, non-regular files, unknown sidecars, and unsupported media. Errors and logs never include API keys, tokens, cookies, authorization headers, source or signed URLs, internal paths, or raw tool diagnostics. Failure reasons are fixed codes derived from tool output, not copies of it. Only at the `debug` log level, a failure also logs up to five of the tool's error lines, bounded and sanitized: URLs, absolute paths, and post IDs are removed and non-ASCII characters replaced. Treat debug logs as sensitive.
 
 When `OMDI_RESTORE_API_KEY_ON_STARTUP` is enabled, `OMDI_API_KEY` holds a complete API key; keep it in the host's secret store. Only its hash reaches the database, and it never appears in logs. Private-media access, DRM circumvention, account-cookie support, and credential forwarding are out of scope.
+
+## Deployment
+
+- The service speaks plain HTTP. Outside a trusted local network, serve it only through a tunnel or a TLS reverse proxy, and keep the container port published on loopback, the `compose.yaml` default.
+- API keys grant job creation and media access. Store them in a password manager or the host's secret store, never in shared Shortcut copies, and revoke a key as soon as it may have leaked.
+- Treat `debug` logs as sensitive and keep the default `info` level in normal operation.
+- The container runs as a non-root user with a read-only root filesystem, no capabilities, `no-new-privileges`, and memory and PID limits; keep those settings when adapting `compose.yaml`.
+- Update regularly. Pinned media tools receive fixes for parsing and security issues only through repository updates, followed by a rebuild.

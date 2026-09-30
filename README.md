@@ -9,7 +9,16 @@ OpenMediaDownloaderIOS is a self-hosted media download API intended for use from
 
 No host installation of Go, Node.js, Bruno, or the media tools is required for the Compose workflow.
 
+## Compose files
+
+- `compose.yaml` is the production deployment: plain `docker compose` commands build the hardened runtime image and run it with a persistent data volume, in the Compose project `omdi`. See [Self-hosting](#self-hosting).
+- `compose.development.yaml` is the development environment, in the project `omdi-dev`. The `Makefile` selects it for every target, so use `make` rather than plain `docker compose` while developing.
+
+Both read the same `.env`, created from `.env.example`.
+
 ## Quick start
+
+This starts the development environment:
 
 ```bash
 cp .env.example .env
@@ -44,9 +53,21 @@ Stop the environment with:
 make compose-down
 ```
 
-The project-root `.env` configures local Compose development.
+The project-root `.env` configures both Compose files.
 
 Compose publishes the API on `127.0.0.1:8080` only. To test from another device on a trusted local network, such as an iPhone, set `OMDI_PUBLISH_HOST=0.0.0.0` and point `OMDI_PUBLIC_URL` at an address that device can reach, for example `http://192.168.1.10:8080`, so returned `download_url` links work there. Traffic is plain HTTP, so API keys and download tokens cross the network unencrypted. Never publish this port to the internet.
+
+## Self-hosting
+
+To run your own server:
+
+```bash
+cp .env.example .env    # set OMDI_PUBLIC_URL to the address your devices reach
+docker compose up --build --detach --wait
+docker compose exec app omdi keys create --name phone
+```
+
+The service speaks plain HTTP and publishes on loopback by default; put a tunnel or a TLS reverse proxy in front of it before using it over the internet. [Self-Hosting](docs/self-hosting.md) covers disk sizing, operation, updates, backups, remote access, and hosts without persistent storage. [iOS Shortcut](docs/shortcut.md) explains how to build the Shortcut that uses the server.
 
 ## Configuration
 
@@ -182,7 +203,8 @@ make collection-test
 | `make image-scan` | Scan the production image for fixed high or critical vulnerabilities. |
 | `make smoke` | Validate `/healthz` inside the production image. |
 | `make real-smoke URL=...` | Optionally exercise real extraction and network access, then purge temporary state. |
-| `make compose-check` | Verify the application memory and PID limits. |
+| `make compose-check` | Verify the development service's hardening and memory and PID limits. |
+| `make production-smoke` | Start `compose.yaml` in an isolated project, check its hardening, health, readiness, and key management, then remove it. |
 | `make compose-up` | Start the development service with Compose, attached to its logs. `make dev` is an alias. |
 | `make compose-up-detached` | Start the development service in the background and wait until it is healthy. |
 | `make collection-test` | Run the Bruno collection against a Compose service built with the fake extractor, then stop it. |
@@ -226,7 +248,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-There is no iOS Shortcut package yet. Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed` with `error_detail` `login_required` or `blocked`; anti-bot checks are more frequent from datacenter addresses than from residential networks. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–3 are complete; Phase 4 packaging and documentation finalization is next, followed by Phase 5 bulk ZIP downloads for multi-item jobs. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
+Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed` with `error_detail` `login_required` or `blocked`; anti-bot checks are more frequent from datacenter addresses than from residential networks. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–4 are complete; Phase 5, bulk ZIP downloads for multi-item jobs, is next. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

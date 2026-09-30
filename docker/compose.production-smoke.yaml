@@ -1,0 +1,7 @@
+# Isolates the production smoke test from a local .env and from published ports.
+services:
+  app:
+    env_file: !reset []
+    environment:
+      OMDI_PUBLIC_URL: http://localhost:8080
+    ports: !reset []

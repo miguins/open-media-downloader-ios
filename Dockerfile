@@ -88,6 +88,10 @@ COPY --chown=omdi:omdi . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/omdi ./cmd/omdi
 
 FROM ${PYTHON_IMAGE} AS runtime
+LABEL org.opencontainers.image.title="OpenMediaDownloaderIOS" \
+      org.opencontainers.image.description="Self-hosted media download API for iOS Shortcuts" \
+      org.opencontainers.image.source="https://github.com/miguins/open-media-downloader-ios" \
+      org.opencontainers.image.licenses="MIT"
 COPY --from=ffmpeg-builder /opt/ffmpeg/ /opt/ffmpeg/
 COPY --from=media-tools-builder /opt/media-tools/ /opt/media-tools/
 COPY --from=builder /tmp/omdi /usr/local/bin/omdi

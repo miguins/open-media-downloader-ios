@@ -1,0 +1,115 @@
+name: omdi-dev
+
+x-development-build: &development-build
+  context: .
+  target: development
+  args:
+    DEV_UID: "${OMDI_DEV_UID:-1000}"
+    DEV_GID: "${OMDI_DEV_GID:-1000}"
+
+services:
+  app:
+    build: *development-build
+    mem_limit: 1g
+    pids_limit: 64
+    command: ["sh", "-ec", "mkdir -p \"$$GOTMPDIR\"; go build -trimpath -o /home/omdi/.cache/go-build/omdi-dev ./cmd/omdi; exec /home/omdi/.cache/go-build/omdi-dev serve"]
+    init: true
+    environment:
+      GOTMPDIR: /home/omdi/.cache/go-build/tmp
+      OMDI_HTTP_ADDR: "${OMDI_HTTP_ADDR-:8080}"
+      OMDI_LOG_LEVEL:
+      OMDI_DATA_DIR:
+      OMDI_RESTORE_API_KEY_ON_STARTUP:
+      OMDI_API_KEY:
+      OMDI_ALLOWED_PLATFORMS:
+      OMDI_MAX_URL_LENGTH:
+      OMDI_MAX_REQUEST_BYTES:
+      OMDI_JOB_TIMEOUT:
+      OMDI_MAX_JOB_BYTES:
+      OMDI_MIN_FREE_BYTES:
+      OMDI_JOB_RETENTION:
+      OMDI_TOKEN_TTL:
+      OMDI_YTDLP_PATH:
+      OMDI_GALLERYDL_PATH:
+      OMDI_FFMPEG_PATH:
+      OMDI_FFPROBE_PATH:
+      OMDI_PUBLIC_URL:
+      OMDI_MAX_QUEUED_JOBS:
+      OMDI_MAX_JOB_ITEMS:
+    ports:
+      # Loopback by default; set OMDI_PUBLISH_HOST=0.0.0.0 to test from the local network.
+      - "${OMDI_PUBLISH_HOST:-127.0.0.1}:8080:8080"
+    volumes:
+      - ./cmd:/workspace/cmd:ro
+      - ./internal:/workspace/internal:ro
+      - ./go.mod:/workspace/go.mod:ro
+      - ./go.sum:/workspace/go.sum:ro
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/home/omdi/.cache/go-build
+      - app-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import json, urllib.request;
+          response = urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2);
+          assert response.status == 200;
+          assert json.load(response) == {'status': 'ok'}
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+
+  tools:
+    profiles: ["tools"]
+    build: *development-build
+    command: ["go", "version"]
+    volumes:
+      - .:/workspace
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/home/omdi/.cache/go-build
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  bruno:
+    profiles: ["tools"]
+    image: ghcr.io/usebruno/cli:4.1.0-debian@sha256:d127a19ba4cc4e195e54716bcc175cfb6d937f0cd48074525aaf9580149ca1d3
+    command:
+      - run
+      - .
+      - -r
+      - --env
+      - local
+      - --env-var
+      - baseUrl=http://app:8080
+    environment:
+      OMDI_API_KEY:
+    volumes:
+      - ./collection:/bruno:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
+  app-data:

@@ -1,12 +1,14 @@
+# Development targets use compose.development.yaml; compose.yaml is the production deployment.
+export COMPOSE_FILE ?= compose.development.yaml
 COMPOSE := docker compose
-COLLECTION_COMPOSE := $(COMPOSE) -f compose.yaml -f docker/compose.collection.yaml
+COLLECTION_COMPOSE := $(COMPOSE) -f compose.development.yaml -f docker/compose.collection.yaml
 TOOLS_RUN := $(COMPOSE) run --rm --no-deps tools
 APP_BINARY := /home/omdi/.cache/go-build/omdi-dev
 APP_RUN := $(COMPOSE) run --rm --no-deps -T
 APP_BUILD := mkdir -p "$$GOTMPDIR"; go build -trimpath -o $(APP_BINARY) ./cmd/omdi
 TRIVY_IMAGE := aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
-.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
+.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check production-smoke compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
 
 bootstrap:
 	command -v docker >/dev/null
@@ -55,6 +57,9 @@ real-smoke:
 
 compose-check:
 	sh scripts/check-compose.sh
+
+production-smoke:
+	sh scripts/production-smoke.sh
 
 compose-up:
 	$(COMPOSE) up --build
@@ -124,4 +129,5 @@ ci:
 	$(MAKE) compose-check
 	sh scripts/test-real-smoke.sh
 	$(MAKE) docker-build smoke image-scan
+	$(MAKE) production-smoke
 	$(MAKE) collection-test

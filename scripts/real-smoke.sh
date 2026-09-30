@@ -6,6 +6,8 @@ if [ -z "${OMDI_REAL_SMOKE_URL:-}" ]; then
 	exit 2
 fi
 
+# The smoke test runs against the development service, which builds the binary below.
+export COMPOSE_FILE="${COMPOSE_FILE:-compose.development.yaml}"
 app_binary=${APP_BINARY:-/home/omdi/.cache/go-build/omdi-dev}
 api_key=
 owner_id=

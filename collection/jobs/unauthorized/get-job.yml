@@ -1,0 +1,30 @@
+info:
+  name: get-job
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v1/jobs/unauthorized"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "401"
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+    - expression: res.headers['www-authenticate']
+      operator: eq
+      value: Bearer
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: Confirms missing API-key requests receive a non-cacheable authentication error.

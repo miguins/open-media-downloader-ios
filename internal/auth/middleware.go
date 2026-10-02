@@ -139,6 +139,7 @@ func (a *Authenticator) authenticate(ctx context.Context, authorization string) 
 
 func writeJSON(response http.ResponseWriter, status int, body string) {
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(status)
 	_, _ = io.WriteString(response, body)
 }

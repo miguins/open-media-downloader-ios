@@ -267,6 +267,8 @@ components:
     Unauthorized:
       description: The API key is missing, malformed, unknown, or revoked.
       headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
         WWW-Authenticate:

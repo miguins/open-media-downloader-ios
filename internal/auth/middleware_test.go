@@ -137,6 +137,9 @@ func TestMiddlewareRejectsInvalidCredentials(t *testing.T) {
 			if response.Code != http.StatusUnauthorized || owner != "" {
 				t.Fatalf("status = %d owner = %q; want 401", response.Code, owner)
 			}
+			if got := response.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("authentication cache header %q", got)
+			}
 			if got := response.Header().Get("WWW-Authenticate"); got != "Bearer" {
 				t.Fatalf("WWW-Authenticate = %q", got)
 			}
@@ -184,6 +187,9 @@ func TestMiddlewareStoreFailure(t *testing.T) {
 	}
 	if got := response.Body.String(); got != "{\"error\":\"internal\"}\n" {
 		t.Fatalf("body = %q", got)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("failure cache header %q", got)
 	}
 	if !strings.Contains(logs.String(), "authentication unavailable") || strings.Contains(logs.String(), plaintext[32:]) {
 		t.Fatalf("unexpected logs: %s", logs.String())

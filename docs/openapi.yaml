@@ -504,7 +504,7 @@ components:
             type: string
             format: binary
     RangeNotSatisfiable:
-      description: No requested byte range overlaps the file. Uses the content server's plain-text error format.
+      description: The requested byte range cannot be served. Returns the standard JSON error with code range_not_satisfiable.
       headers:
         X-Trace-Id:
           $ref: "#/components/headers/TraceId"
@@ -523,9 +523,11 @@ components:
             type: string
             const: no-referrer
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
+          example:
+            error: range_not_satisfiable
     NotModified:
       description: The file has not changed according to the conditional request. No body.
       headers:
@@ -580,6 +582,7 @@ components:
             - not_found
             - conflict
             - request_too_large
+            - range_not_satisfiable
             - unsupported_media_type
             - unsupported_url
             - too_many_jobs

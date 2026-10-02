@@ -74,8 +74,9 @@ func (h *downloadHandler) reject(response http.ResponseWriter, request *http.Req
 // cut off by the server-wide write timeout while stalled clients are still disconnected.
 type deadlineWriter struct {
 	http.ResponseWriter
-	controller *http.ResponseController
-	extension  time.Duration
+	controller    *http.ResponseController
+	extension     time.Duration
+	rangeRejected bool
 }
 
 func newDeadlineWriter(response http.ResponseWriter, extension time.Duration) *deadlineWriter {
@@ -90,13 +91,25 @@ func (w *deadlineWriter) extend() {
 	_ = w.controller.SetWriteDeadline(time.Now().Add(w.extension))
 }
 
-// WriteHeader preserves privacy headers on content-server errors.
+// WriteHeader restores privacy headers and normalizes content-server range errors.
 func (w *deadlineWriter) WriteHeader(status int) {
 	w.Header().Set("Cache-Control", "no-store")
+	if status == http.StatusRequestedRangeNotSatisfiable {
+		w.rangeRejected = true
+		w.Header().Del("Content-Disposition")
+		w.Header().Del("Content-Length")
+		w.extend()
+		writeError(w.ResponseWriter, status, "range_not_satisfiable")
+		return
+	}
 	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *deadlineWriter) Write(p []byte) (int, error) {
+	if w.rangeRejected {
+		// ServeContent writes its text error after WriteHeader; the JSON is already sent.
+		return len(p), nil
+	}
 	w.extend()
 
 	return w.ResponseWriter.Write(p)

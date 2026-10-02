@@ -29,7 +29,10 @@ runtime:
       value: "416"
     - expression: res.headers['content-type']
       operator: eq
-      value: text/plain; charset=utf-8
+      value: application/json; charset=utf-8
+    - expression: res.body.error
+      operator: eq
+      value: range_not_satisfiable
     - expression: res.headers['x-content-type-options']
       operator: eq
       value: nosniff
@@ -45,4 +48,4 @@ settings:
   forwardAuthorizationHeader: false
 
 docs: |-
-  Verifies that an unsatisfiable item range returns a range error and the complete media size.
+  Verifies that an unsatisfiable item range returns a JSON error and the complete media size.

@@ -213,8 +213,9 @@ with `Content-Range: bytes */<bundle-size>` for an unsatisfiable range. HEAD
 ignores Range and returns `200` for a valid bundle. Conditional request behavior
 follows the existing item endpoint. Malformed, unknown, replaced, expired,
 wrong-route, or deleted-resource tokens and unavailable bundle files all return
-the same safe `404`; HEAD errors have no body. `416` follows the existing content
-server's error format rather than claiming it is a JSON application error.
+the same safe `404`; HEAD errors have no body. Following the approved contract
+refinement, `416` uses the standard JSON error body with code
+`range_not_satisfiable`, preserving `Content-Range` and privacy headers.
 
 Trace logs use the route pattern, fixed reason codes, job/key IDs, item counts,
 sizes, and durations. They never include tokens, request URLs, source names,

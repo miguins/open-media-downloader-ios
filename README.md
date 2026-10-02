@@ -134,7 +134,7 @@ curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
 - `POST /v1/jobs` queues a job (`202`). Each key may have `OMDI_MAX_QUEUED_JOBS` queued or running jobs.
 - `GET /v1/jobs/{id}` returns the status. For a succeeded job, each item carries a `download_url` that expires after `OMDI_TOKEN_TTL`; every poll issues fresh links and invalidates earlier ones.
 - Newly succeeded multi-item jobs also expose `bundle`, containing `file_name`, `media_type` (`application/zip`), `size_bytes`, `download_url`, and `download_expires_at`. The ZIP combines ordered photos, videos, or audio from that job. Single-item jobs and jobs completed before the bundle migration omit it.
-- `GET /v1/bundles/{token}` downloads that ZIP without an API key. `HEAD` returns full-file headers without a body and ignores `Range`; GET supports ranges. Unsatisfiable item or bundle ranges return `416` and `Content-Range: bytes */<size>`.
+- `GET /v1/bundles/{token}` downloads that ZIP without an API key. `HEAD` returns full-file headers without a body and ignores `Range`; GET supports ranges. Unsatisfiable item or bundle ranges return `416`, `Content-Range: bytes */<size>`, and the JSON error `{"error":"range_not_satisfiable"}`.
 - `DELETE /v1/jobs/{id}` cancels a queued or running job.
 - `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`. `HEAD` returns the same headers without the body.
 

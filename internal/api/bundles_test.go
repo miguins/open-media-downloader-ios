@@ -160,6 +160,9 @@ func TestBundleDownloadRanges(t *testing.T) {
 	if res.Header().Get("Cache-Control") != "no-store" || res.Header().Get("Referrer-Policy") != "no-referrer" {
 		t.Fatalf("range error privacy headers %#v", res.Header())
 	}
+	if res.Header().Get("Content-Type") != "application/json; charset=utf-8" || res.Body.String() != "{\"error\":\"range_not_satisfiable\"}\n" || res.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("range error JSON: %#v %q", res.Header(), res.Body.String())
+	}
 	modified := full.Header().Get("Last-Modified")
 	res = f.do(t, http.MethodGet, path, "", "", "If-Modified-Since", modified)
 	if res.Code != 304 || res.Body.Len() != 0 {
@@ -287,7 +290,10 @@ func TestItemDownloadUnsatisfiableRange(t *testing.T) {
 	link := item["download_url"].(string)
 	token := link[strings.LastIndex(link, "/")+1:]
 	r := f.do(t, http.MethodGet, "/v1/downloads/"+token, "", "", "Range", "bytes=5-")
-	if r.Code != 416 || r.Header().Get("Content-Range") != "bytes */5" || r.Header().Get("Cache-Control") != "no-store" || r.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+	if r.Code != 416 || r.Header().Get("Content-Range") != "bytes */5" || r.Header().Get("Cache-Control") != "no-store" || r.Header().Get("Content-Type") != "application/json; charset=utf-8" {
 		t.Fatalf("range %d %#v", r.Code, r.Header())
+	}
+	if r.Body.String() != "{\"error\":\"range_not_satisfiable\"}\n" || r.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("range error JSON: %#v %q", r.Header(), r.Body.String())
 	}
 }

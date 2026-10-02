@@ -27,6 +27,7 @@ runtime:
           bru.setNextRequest("get-job");
         } else if (body.items && body.items.length > 0) {
           bru.setVar("downloadToken", body.items[0].download_url.split("/").pop());
+          bru.setVar("downloadSize", body.items[0].size_bytes);
         }
     - type: tests
       code: |-
@@ -37,6 +38,7 @@ runtime:
           }
           expect(body.status).to.equal("succeeded");
           expect(body.items).to.have.lengthOf(1);
+          expect(body).not.to.have.property("bundle");
           expect(body.items[0].media_type).to.equal("video/mp4");
           expect(body.items[0].download_url).to.match(/\/v1\/downloads\/[A-Za-z0-9_-]{43}$/);
         });

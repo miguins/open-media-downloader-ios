@@ -6,9 +6,9 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 ## Current position
 
-**Phase 4.1 — Releases and published images is complete. Phase 5 is next.**
+**Phases 0–5 are complete, including bulk bundle downloads.**
 
-The next development effort is **Phase 5 — Bulk bundle downloads**.
+No further milestone is currently defined.
 
 The Phase 1 and Phase 2 documents under `docs/superpowers/records/` were consolidated at their handoffs and record delivered scope; they are not pre-implementation plans under the current Superpowers format. Phase 3 and later phases follow the complete current workflow before implementation begins.
 
@@ -91,18 +91,18 @@ A continuation of Phase 4 packaging that publishes each version for self-hosters
 
 ## Phase 5 — Bulk bundle downloads
 
-**Status: Planned**
+**Status: Complete**
 
 A job with more than one item, such as a carousel containing photos and videos, can be downloaded as one bundle in ZIP format instead of one request per item.
 
 - Direction: a succeeded multi-item job exposes a `bundle` object beside `items`, with its own opaque, short-lived download token and expiry at `GET /v1/bundles/{token}` (Bruno request `get-bundle`). The bundle keeps the existing token-as-credential model of `/v1/downloads/{token}`. Bundle names the collection of media; ZIP names its file format.
 - A job ID is never accepted as an unauthenticated download credential. Job IDs are identifiers that appear in API responses, operator commands, and logs, do not expire, and would bypass ownership isolation.
 - Rejected alternative: an authenticated `GET /v1/jobs/{id}/bundle`. It is safe, but the link cannot be handed to Safari or a Shortcut file action without the `Authorization` header.
-- Selected design direction: build the ZIP in the worker and persist it until job cleanup, with a dedicated bundle route and a server-generated download name. The [approved specification](superpowers/specs/2026-10-01-phase-5-bulk-bundles-design.md) details lifecycle, resource limits, and compatibility. The [implementation plan](superpowers/plans/2026-10-01-phase-5-bulk-bundles.md) is approved for native execution in this session.
+- Selected design direction: build the ZIP in the worker and persist it until job cleanup, with a dedicated bundle route and a server-generated download name. The [approved specification](superpowers/specs/2026-10-01-phase-5-bulk-bundles-design.md) details lifecycle, resource limits, and compatibility. The [implementation plan](superpowers/plans/2026-10-01-phase-5-bulk-bundles.md) was executed and verified with the complete `make ci` suite.
 - ZIP entries use the store method because media is already compressed. The bundle is bounded by the existing `OMDI_MAX_JOB_ITEMS` and `OMDI_MAX_JOB_BYTES` limits plus a fixed per-entry overhead.
 - Contract corrections found during Phase 4:
-  - Authentication `401` and `500` responses must send `Cache-Control: no-store` like every other JSON response, and the OpenAPI `Unauthorized` response must declare it.
-  - `GET /v1/downloads/{token}` returns `416 Range Not Satisfiable` with `Content-Range: bytes */<size>` for an unsatisfiable `Range`; the OpenAPI contract must declare it, with a test pinning the behavior.
+  - Authentication `401` and `500` responses send `Cache-Control: no-store` like every other JSON response, and the OpenAPI `Unauthorized` response declares it.
+  - `GET /v1/downloads/{token}` returns `416 Range Not Satisfiable` with `Content-Range: bytes */<size>` for an unsatisfiable `Range`; the OpenAPI contract declares it, with a test pinning the behavior.
 
 ## Delivery rules
 

@@ -66,7 +66,25 @@ Shortcuts has no loop that runs until a condition is met, so the shortcut polls 
 
 Two hundred polls three seconds apart provide about ten minutes of waiting, plus request time. The server's default ten-minute job timeout starts only when the single worker takes the job; time spent queued is additional. A healthy job can therefore still be queued or running when this polling window ends. In that case, preserve its ID and use `Resume download` as described below.
 
-### 4. Save the media
+### 4. Choose how to save the media
+
+For one ZIP containing a carousel's photos and videos together, after confirming
+`status` is `succeeded`, **Get Dictionary Value** for `bundle` in `Job`:
+
+1. **If** Bundle has any value, **Choose from Menu** with `Save ZIP` and `Save items`.
+2. In `Save ZIP`, **Get Dictionary Value** for `download_url` in Bundle, then **Get
+   Contents of URL** using GET without an Authorization header. **Save File** with
+   the resulting ZIP in Files, then **Stop This Shortcut**.
+3. In `Save items`, continue to the individual save actions below. If Bundle has
+   no value, also continue there; this includes single-item jobs and jobs completed
+   before the server upgrade.
+
+A ZIP is saved to Files. To put individual photos and videos directly in Photos,
+choose `Save items`. Use the bundle from the final poll: another poll replaces
+its token, and its link expires after 15 minutes by default or sooner when job
+retention ends. If a link has expired, resume the same job to obtain a fresh one.
+
+### 5. Save the individual media
 
 1. **Get Dictionary Value** for `status` in `Job`.
 2. **If** Dictionary Value is `succeeded`:

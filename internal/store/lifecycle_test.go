@@ -95,7 +95,7 @@ func TestCompleteJob(t *testing.T) {
 		{ID: "item0", JobID: j.ID, Position: 0, FileName: "a.mp4", MediaType: "video/mp4", SizeBytes: 3, CreatedAt: testNow},
 		{ID: "item1", JobID: j.ID, Position: 1, FileName: "b.jpg", MediaType: "image/jpeg", SizeBytes: 4, CreatedAt: testNow},
 	}
-	if err := s.CompleteJob(ctx, done, items); err != nil {
+	if err := s.CompleteJob(ctx, done, items, &job.Bundle{JobID: j.ID, FileName: "bundle.zip", SizeBytes: 300, CreatedAt: testNow}); err != nil {
 		t.Fatalf("CompleteJob() error = %v", err)
 	}
 	got, err := s.Job(ctx, "owner", j.ID)
@@ -114,12 +114,12 @@ func TestCompleteJob(t *testing.T) {
 		t.Fatalf("Item(missing) error = %v", err)
 	}
 
-	if err := s.CompleteJob(ctx, done, nil); !errors.Is(err, ErrConflict) {
+	if err := s.CompleteJob(ctx, done, nil, nil); !errors.Is(err, ErrConflict) {
 		t.Fatalf("CompleteJob(not running) error = %v; want ErrConflict", err)
 	}
 	gone := done
 	gone.ID = "missing"
-	if err := s.CompleteJob(ctx, gone, nil); !errors.Is(err, ErrNotFound) {
+	if err := s.CompleteJob(ctx, gone, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("CompleteJob(missing) error = %v; want ErrNotFound", err)
 	}
 }
@@ -135,7 +135,7 @@ func TestCompleteJobRollsBackOnItemFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	duplicate := job.Item{ID: "item0", JobID: j.ID, FileName: "a", MediaType: "video/mp4", CreatedAt: testNow}
-	if err := s.CompleteJob(ctx, done, []job.Item{duplicate, duplicate}); err == nil {
+	if err := s.CompleteJob(ctx, done, []job.Item{duplicate, duplicate}, &job.Bundle{JobID: j.ID, FileName: "bundle.zip", SizeBytes: 300, CreatedAt: testNow}); err == nil {
 		t.Fatal("CompleteJob() error = nil for duplicate items")
 	}
 	if status, err := s.JobStatus(ctx, j.ID); err != nil || status != job.StatusRunning {
@@ -346,7 +346,7 @@ func TestLifecycleQueriesFailAfterClose(t *testing.T) {
 	ctx := context.Background()
 	j := job.New("owner", "https://vimeo.com/1", "vimeo", testNow, time.Hour)
 	checks := map[string]error{
-		"CompleteJob":          s.CompleteJob(ctx, j, nil),
+		"CompleteJob":          s.CompleteJob(ctx, j, nil, nil),
 		"DeleteJob":            s.DeleteJob(ctx, j.ID),
 		"ReplaceDownloadToken": s.ReplaceDownloadToken(ctx, job.DownloadToken{}),
 	}

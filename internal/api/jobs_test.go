@@ -277,14 +277,14 @@ func (f *apiFixture) complete(t *testing.T, jobID string, contents string) {
 	if err := os.WriteFile(filepath.Join(workDir, "out"), []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	items, err := f.layout.Ingest(jobID, []storage.Output{{Name: "out", MediaType: "video/mp4"}}, 1<<20, time.Now().UTC())
+	items, err := f.layout.Ingest(context.Background(), jobID, []storage.Output{{Name: "out", MediaType: "video/mp4"}}, 1<<20, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := claimed.Transition(job.StatusSucceeded, "", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.store.CompleteJob(ctx, claimed, items); err != nil {
+	if err := f.store.CompleteJob(ctx, claimed, items, nil); err != nil {
 		t.Fatal(err)
 	}
 }

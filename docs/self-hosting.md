@@ -134,9 +134,13 @@ To use the service only on a trusted local network, for example from an iPhone a
 
 ## Disk space
 
-A job starts only when the data volume has `OMDI_MIN_FREE_BYTES + 2 × OMDI_MAX_JOB_BYTES` free: merging audio and video briefly keeps the input and the output on disk. Completed files stay until `OMDI_JOB_RETENTION` expires, so many successful jobs within one retention window add up. `/readyz` fails when free space drops below `OMDI_MIN_FREE_BYTES`.
+Let `B = OMDI_MAX_JOB_BYTES`, `N = OMDI_MAX_JOB_ITEMS`, and `H(n) = 1024 × (n + 1)` bytes. A job starts only with `OMDI_MIN_FREE_BYTES + 2 × B + H(N)` free. This covers remux input/output overlap and, after extraction leftovers are removed, media/ZIP overlap. Immediately before building a bundle with `n` items totaling `S` bytes, the worker requires `OMDI_MIN_FREE_BYTES + S + H(n)` free. The ZIP itself is limited to `S + H(n)`.
 
-With the defaults, 2 GiB per job and 1 GiB reserved, a job needs about 5 GiB free. On small disks, lower `OMDI_MAX_JOB_BYTES` and `OMDI_MIN_FREE_BYTES` together, and shorten `OMDI_JOB_RETENTION` if you save media right after downloading it. A job that fails with `too_large` almost immediately means the disk, not the video, is the limit.
+These checks admit work; they do not reserve filesystem space. External disk consumption can still make a write fail, in which case the job fails and its files are discarded. `/readyz` continues to fail when free space falls below `OMDI_MIN_FREE_BYTES`.
+
+Retained multi-item jobs occupy approximately twice their media size, plus small ZIP metadata; single-item jobs keep only their media. Both media and ZIPs stay until job expiry or operator deletion/purge, so successful jobs within one retention window add up. Token expiry does not remove the ZIP. Interrupted bundle construction is cleaned on recovery before the next worker starts.
+
+With the defaults, 2 GiB per job and 1 GiB reserved, a job needs about 5 GiB plus 21 KiB of ZIP overhead free. On small disks, lower `OMDI_MAX_JOB_BYTES` and `OMDI_MIN_FREE_BYTES` together, and shorten `OMDI_JOB_RETENTION` if you save media right after downloading it. A job that fails with `too_large` almost immediately means the disk, not the video, is the limit.
 
 ## Hosts without persistent storage
 

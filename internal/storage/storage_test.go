@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -126,7 +127,7 @@ func TestWorkDirLifecycle(t *testing.T) {
 		if _, err := layout.OpenItem(id.New(), bad); !errors.Is(err, ErrInvalidID) {
 			t.Fatalf("OpenItem(valid, %q) error = %v", bad, err)
 		}
-		if _, err := layout.Ingest(bad, nil, 1, now); !errors.Is(err, ErrInvalidID) {
+		if _, err := layout.Ingest(context.Background(), bad, nil, 1, now); !errors.Is(err, ErrInvalidID) {
 			t.Fatalf("Ingest(%q) error = %v", bad, err)
 		}
 	}
@@ -167,7 +168,7 @@ func TestIngestMovesValidatedFiles(t *testing.T) {
 	writeOutput(t, workDir, "video.mp4", "abc")
 	writeOutput(t, workDir, "cover", "defg")
 
-	items, err := layout.Ingest(jobID, []Output{
+	items, err := layout.Ingest(context.Background(), jobID, []Output{
 		{Name: "video.mp4", MediaType: "video/mp4"},
 		{Name: "cover", MediaType: "image/jpeg"},
 	}, 7, now)
@@ -257,7 +258,7 @@ func TestIngestRejectsUnsafeOutput(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(t, workDir, dataDir)
 			}
-			items, err := layout.Ingest(jobID, tt.outputs, tt.max, now)
+			items, err := layout.Ingest(context.Background(), jobID, tt.outputs, tt.max, now)
 			if !errors.Is(err, tt.want) || items != nil {
 				t.Fatalf("Ingest() = %v, %v; want %v", items, err, tt.want)
 			}
@@ -280,7 +281,7 @@ func TestIngestFailsWhenJobsRootIsReadOnly(t *testing.T) {
 	}
 	writeOutput(t, workDir, "a", "x")
 	readOnlyDir(t, filepath.Join(dir, "jobs"))
-	if _, err := layout.Ingest(jobID, []Output{{Name: "a", MediaType: "video/mp4"}}, 10, now); err == nil {
+	if _, err := layout.Ingest(context.Background(), jobID, []Output{{Name: "a", MediaType: "video/mp4"}}, 10, now); err == nil {
 		t.Fatal("Ingest() error = nil")
 	}
 }

@@ -1,0 +1,42 @@
+info:
+  name: get-bundle
+  type: http
+  seq: 3
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v1/bundles/{{bundleToken}}"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers['content-type']
+      operator: eq
+      value: application/zip
+    - expression: res.headers['content-disposition']
+      operator: contains
+      value: attachment
+    - expression: res.headers['x-content-type-options']
+      operator: eq
+      value: nosniff
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: |-
+  Downloads the persisted mixed-media ZIP using only its temporary bundle token.

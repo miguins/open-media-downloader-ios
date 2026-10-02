@@ -33,6 +33,7 @@ type jobResponse struct {
 	CreatedAt time.Time        `json:"created_at"`
 	UpdatedAt time.Time        `json:"updated_at"`
 	ExpiresAt time.Time        `json:"expires_at"`
+	Bundle    *bundleResponse  `json:"bundle,omitempty"`
 	Items     []itemResponse   `json:"items,omitempty"`
 }
 
@@ -147,6 +148,11 @@ func (h *jobHandler) get(response http.ResponseWriter, request *http.Request) {
 		}
 		h.deps.Logger.InfoContext(request.Context(), "download links issued", "items", len(items))
 		body.Items = items
+		body.Bundle, err = h.bundleLink(request, j)
+		if err != nil {
+			h.internal(response, request, "issue bundle link failed")
+			return
+		}
 	}
 	writeJSON(response, http.StatusOK, body)
 }

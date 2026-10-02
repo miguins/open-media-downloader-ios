@@ -4,7 +4,6 @@ package extractor
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,8 +33,7 @@ type File struct {
 // fakeMedia is the synthetic payload written by Fake.
 var fakeMedia = []byte(strings.Repeat("OMDI synthetic media for development and tests.\n", 32))
 
-// Fake produces one synthetic file without network access. It stands in for real extractors
-// until they are implemented.
+// Fake produces synthetic files without network access for development and tests.
 type Fake struct{}
 
 // Extract writes the synthetic payload to the work directory.
@@ -43,13 +41,20 @@ func (Fake) Extract(ctx context.Context, request Request) ([]File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if int64(len(fakeMedia)) > request.MaxBytes {
-		return nil, errors.New("extractor: output exceeds size budget")
+	files := []File{{Name: "fake.mp4", MediaType: "video/mp4"}}
+	if request.URL == "https://www.instagram.com/p/DduKfFmDxsG/" {
+		files = append(files, File{Name: "fake.jpg", MediaType: "image/jpeg"})
 	}
-	const name = "fake.mp4"
-	if err := os.WriteFile(filepath.Join(request.WorkDir, name), fakeMedia, 0o600); err != nil {
-		return nil, fmt.Errorf("extractor: write fake media: %w", err)
+	if len(files) > request.MaxItems || int64(len(fakeMedia))*int64(len(files)) > request.MaxBytes {
+		return nil, ErrTooLarge
 	}
-
-	return []File{{Name: name, MediaType: "video/mp4"}}, nil
+	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(request.WorkDir, file.Name), fakeMedia, 0o600); err != nil {
+			return nil, errors.New("extractor: write fake media failed")
+		}
+	}
+	return files, nil
 }

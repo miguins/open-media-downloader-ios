@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -57,12 +58,13 @@ type Output struct {
 
 // Layout is the storage layout rooted at the data directory.
 type Layout struct {
-	root string
+	root     string
+	bundleIO bundleIO
 }
 
 // New ensures the private jobs and work directories exist under dataDir.
 func New(dataDir string) (*Layout, error) {
-	layout := &Layout{root: dataDir}
+	layout := &Layout{root: dataDir, bundleIO: defaultBundleIO()}
 	for _, name := range []string{jobsDir, workDir} {
 		if err := ensurePrivateDir(filepath.Join(dataDir, name)); err != nil {
 			return nil, err
@@ -121,11 +123,11 @@ func (l *Layout) ClearWork() error {
 // Ingest moves the reported outputs from the work directory of jobID into its private job directory
 // under server-generated names and returns the resulting items. Any unsafe output, unsupported media
 // type, or total size above maxBytes rejects the whole job and removes its job directory.
-func (l *Layout) Ingest(jobID string, outputs []Output, maxBytes int64, now time.Time) ([]job.Item, error) {
+func (l *Layout) Ingest(ctx context.Context, jobID string, outputs []Output, maxBytes int64, now time.Time) ([]job.Item, error) {
 	if !id.Valid(jobID) {
 		return nil, ErrInvalidID
 	}
-	items, err := l.ingest(jobID, outputs, maxBytes, now)
+	items, err := l.ingest(ctx, jobID, outputs, maxBytes, now)
 	if err != nil {
 		return nil, errors.Join(err, pathless("storage: remove rejected job", os.RemoveAll(l.jobPath(jobID))))
 	}
@@ -133,7 +135,10 @@ func (l *Layout) Ingest(jobID string, outputs []Output, maxBytes int64, now time
 	return items, nil
 }
 
-func (l *Layout) ingest(jobID string, outputs []Output, maxBytes int64, now time.Time) ([]job.Item, error) {
+func (l *Layout) ingest(ctx context.Context, jobID string, outputs []Output, maxBytes int64, now time.Time) ([]job.Item, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(outputs) == 0 {
 		return nil, ErrInvalidOutput
 	}
@@ -144,6 +149,9 @@ func (l *Layout) ingest(jobID string, outputs []Output, maxBytes int64, now time
 	items := make([]job.Item, 0, len(outputs))
 	var total int64
 	for position, output := range outputs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		extension, ok := Extension(output.MediaType)
 		if !ok || !validName(output.Name) {
 			return nil, ErrInvalidOutput
@@ -202,7 +210,7 @@ func (l *Layout) OpenItem(jobID, itemID string) (*os.File, error) {
 		return nil, ErrInvalidID
 	}
 	// Both path components are validated identifiers, so the path stays inside the jobs root.
-	file, err := os.OpenFile(filepath.Join(l.jobPath(jobID), itemID), os.O_RDONLY|syscall.O_NOFOLLOW, 0) //nolint:gosec // See above.
+	file, err := os.OpenFile(filepath.Join(l.jobPath(jobID), itemID), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0) //nolint:gosec // See above.
 	if err != nil {
 		return nil, pathless("storage: open item", err)
 	}

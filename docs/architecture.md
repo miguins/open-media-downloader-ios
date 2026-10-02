@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-Phase 4 is implemented. The service combines the authenticated job API, SQLite queue, one bounded worker, short-lived downloads, recovery and cleanup with real platform extraction, and is packaged for self-hosting. Implementation order and delivery status remain authoritative in the [Roadmap](roadmap.md).
+Phases 0–5 are implemented, including persisted media bundles. The service combines the authenticated job API, SQLite queue, one bounded worker, short-lived downloads, recovery and cleanup with real platform extraction, and is packaged for self-hosting. Implementation order and delivery status remain authoritative in the [Roadmap](roadmap.md).
 
 ## Packaging
 
@@ -20,7 +20,9 @@ Production uses `extractor.Real`. YouTube, Vimeo, TikTok, Instagram, and Reddit 
 
 The API authenticates the owner, canonicalizes exactly one direct public-post URL, and persists an independent job. The worker claims it, creates a private work directory, and gives the real extractor the job byte and item limits. The extractor opens one loopback egress-proxy session, invokes one fixed adapter through the bounded subprocess runner, and enumerates only top-level regular single-link output files.
 
-ffprobe classifies local content from a closed metadata schema; extensions are never trusted. Approved iOS-compatible media passes through. H.264 with optional AAC in a compatible non-MP4 container may be remuxed locally by FFmpeg using stream copy, reinspected, and transactionally installed. No heavy transcoding occurs. Storage ingests validated files under server-generated names, and polling issues short-lived opaque download tokens.
+ffprobe classifies local content from a closed metadata schema; extensions are never trusted. Approved iOS-compatible media passes through. H.264 with optional AAC in a compatible non-MP4 container may be remuxed locally by FFmpeg using stream copy, reinspected, and transactionally installed. No heavy transcoding occurs. Storage ingests validated files under server-generated names. For two or more items, the worker removes extraction leftovers and writes a private, bounded ZIP with store entries in item order. Bundle copying remains under job timeout/cancellation. Job success, items, and bundle metadata commit together; failed or interrupted construction cannot publish a partial download.
+
+Polling issues independent short-lived opaque tokens for items and, when present, the job's bundle. `/v1/bundles/{token}` serves the complete ZIP with GET/HEAD and byte ranges. Bundle and item credentials use separate tables; polling replaces earlier links and caps expiry by job retention. Legacy succeeded jobs keep individual downloads without backfilling a ZIP. Recovery removes failed/canceled job files before work resumes; periodic expiry and operator removal delete the entire job directory and cascade both token types.
 
 A failed extraction becomes a `Failure` with a fixed `error_detail`: a SIGKILL the runner did not send means the kernel killed the tool, known error-line patterns name platform refusals, media-tool and validation failures have their own details, and the egress session's rejection and failure counts explain otherwise unrecognized failures. The worker stores the detail, retries transient details once, and logs the tool's exit status. Every log line carries a trace ID from a context-scoped `slog` handler; requests, job attempts, cleanup passes, and CLI invocations each start a trace.
 

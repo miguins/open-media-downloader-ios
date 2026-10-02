@@ -22,6 +22,22 @@ Jobs are bounded by URL, request, byte, item, time, disk, diagnostic, memory, an
 
 When `OMDI_RESTORE_API_KEY_ON_STARTUP` is enabled, `OMDI_API_KEY` holds a complete API key; keep it in the host's secret store. Only its hash reaches the database, and it never appears in logs. Private-media access, DRM circumvention, account-cookie support, and credential forwarding are out of scope.
 
+## Bundle downloads
+
+A bundle combines the validated media of one job in ZIP format. Entries use
+server-generated plain names, preserve item order, and use no compression.
+Construction is bounded by item/media budgets plus fixed ZIP overhead, checks
+source sizes and single-link regular files, honors cancellation, and installs
+only a complete private file. Startup recovery removes unfinished-job artifacts.
+
+`/v1/bundles/{token}` accepts an opaque temporary credential distinct from item
+tokens; a job ID never grants unauthenticated access. Treat both link types as
+secrets. Polling replaces previous tokens and expiry cannot outlive the job.
+API-key revocation prevents further polling; issued download links remain usable
+until expiry or job/key purge. Remove the jobs or purge a revoked key when issued
+links must be withdrawn immediately. Authentication errors and downloads,
+including unsatisfiable-range errors, send `Cache-Control: no-store`.
+
 ## Deployment
 
 - The service speaks plain HTTP. Outside a trusted local network, serve it only through a tunnel or a TLS reverse proxy, and keep the container port published on loopback, the `compose.yaml` default.

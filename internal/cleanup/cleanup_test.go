@@ -246,3 +246,93 @@ func TestNewDefaults(t *testing.T) {
 		t.Fatalf("New() = %#v", c)
 	}
 }
+
+func TestRecoverRemovesInterruptedBundleFiles(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	running := f.addJob(t, now, job.StatusRunning)
+	canceled := f.addJob(t, now, job.StatusCanceled)
+	succeeded := f.addJob(t, now, job.StatusSucceeded)
+	for _, j := range []job.Job{running, canceled, succeeded} {
+		if err := os.WriteFile(filepath.Join(f.dataDir, "jobs", j.ID, "bundle.zip"), []byte("zip fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for n := 0; n < 2; n++ {
+		if err := f.cleaner.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.exists("jobs", running.ID) || f.exists("jobs", canceled.ID) {
+		t.Fatal("recovery kept interrupted bundle files")
+	}
+	if !f.exists("jobs", succeeded.ID, "bundle.zip") {
+		t.Fatal("recovery removed succeeded bundle")
+	}
+}
+func TestSweepBundleRetention(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	// Seed bundle metadata through a separate newly completed job.
+	fresh := job.New("owner", "https://vimeo.com/1", "vimeo", now, time.Hour)
+	if err := f.store.CreateJob(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := f.store.ClaimNextJob(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := claimed.Transition(job.StatusSucceeded, "", now); err != nil {
+		t.Fatal(err)
+	}
+	items := []job.Item{{ID: "bundle1", JobID: claimed.ID, Position: 0, FileName: "one.mp4", SizeBytes: 3, CreatedAt: now}, {ID: "bundle2", JobID: claimed.ID, Position: 1, FileName: "two.jpg", SizeBytes: 4, CreatedAt: now}}
+	b := job.Bundle{JobID: claimed.ID, FileName: "bundle.zip", SizeBytes: 300, CreatedAt: now}
+	if err := f.store.CompleteJob(ctx, claimed, items, &b); err != nil {
+		t.Fatal(err)
+	}
+	dir := f.mkdir(t, "jobs", claimed.ID)
+	if err := os.WriteFile(filepath.Join(dir, "bundle.zip"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tok := job.BundleToken{Hash: []byte("expired-bundle"), JobID: claimed.ID, OwnerID: "owner", CreatedAt: now.Add(-time.Minute), ExpiresAt: now}
+	if err := f.store.ReplaceBundleToken(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	f.cleaner.sweep(ctx)
+	if !f.exists("jobs", claimed.ID, "bundle.zip") {
+		t.Fatal("token cleanup removed retained file")
+	}
+	if n, err := f.store.DeleteExpiredBundleTokens(ctx, now); err != nil || n != 0 {
+		t.Fatalf("cleanup left expired tokens: %d %v", n, err)
+	}
+	f.cleaner.now = func() time.Time { return now.Add(2 * time.Hour) }
+	f.cleaner.sweep(ctx)
+	if f.exists("jobs", claimed.ID) {
+		t.Fatal("expired bundle remains")
+	}
+	if _, err := f.store.Bundle(ctx, "owner", claimed.ID); err == nil {
+		t.Fatal("expired metadata remains")
+	}
+
+}
+
+func TestRecoverBundleCleanupFailure(t *testing.T) {
+	f := newFixture(t)
+	j := f.addJob(t, now, job.StatusCanceled)
+	p := filepath.Join(f.dataDir, "jobs")
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions")
+	}
+	if err := os.Chmod(p, 0o500); err != nil { //nolint:gosec // Restricts a directory to test cleanup failure.
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(p, 0o700) }) //nolint:gosec // Restores private directory permissions.
+	if err := f.cleaner.Recover(context.Background()); err == nil {
+		t.Fatal("recovery ignored cleanup failure")
+	} else if strings.Contains(err.Error(), f.dataDir) {
+		t.Fatal("recovery leaked path")
+	}
+	if !f.exists("jobs", j.ID) {
+		t.Fatal("fixture missing")
+	}
+}

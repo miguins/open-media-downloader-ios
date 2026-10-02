@@ -1,6 +1,6 @@
 # OpenMediaDownloaderIOS
 
-OpenMediaDownloaderIOS is a self-hosted media download API intended for use from an iOS Shortcut. It provides authenticated endpoints to queue, poll, and cancel jobs, a persistent single-worker queue, real platform extractors, short-lived download links, and automatic cleanup.
+OpenMediaDownloaderIOS is a self-hosted media download API intended for use from an iOS Shortcut. It provides authenticated endpoints to queue, poll, and cancel jobs, a persistent single-worker queue, real platform extractors, short-lived download links, ZIP bundles for multi-item jobs, and automatic cleanup.
 
 ## Requirements
 
@@ -87,7 +87,7 @@ Unset variables use their defaults. A variable that is set but empty, surrounded
 | `OMDI_MAX_REQUEST_BYTES` | `16384` | Integer 1024–1048576. |
 | `OMDI_JOB_TIMEOUT` | `10m` | Duration 30s–2h. |
 | `OMDI_MAX_JOB_BYTES` | `2147483648` | Integer 1 MiB–100 GiB. |
-| `OMDI_MIN_FREE_BYTES` | `1073741824` | Integer 0–1 TiB; readiness fails below it. A job starts only with this amount plus twice `OMDI_MAX_JOB_BYTES` free. |
+| `OMDI_MIN_FREE_BYTES` | `1073741824` | Integer 0–1 TiB; readiness fails below it. A job starts only with this amount plus twice `OMDI_MAX_JOB_BYTES` and bounded ZIP overhead free; see [disk sizing](docs/self-hosting.md#disk-space). |
 | `OMDI_JOB_RETENTION` | `24h` | Duration 5m–720h, above `OMDI_JOB_TIMEOUT`. |
 | `OMDI_TOKEN_TTL` | `15m` | Duration 1m–24h, not above `OMDI_JOB_RETENTION`. |
 | `OMDI_YTDLP_PATH` | `/opt/media-tools/bin/yt-dlp` | Absolute, clean path. |
@@ -133,6 +133,8 @@ curl -s http://localhost:8080/v1/jobs/<id> -H "Authorization: Bearer $KEY"
 
 - `POST /v1/jobs` queues a job (`202`). Each key may have `OMDI_MAX_QUEUED_JOBS` queued or running jobs.
 - `GET /v1/jobs/{id}` returns the status. For a succeeded job, each item carries a `download_url` that expires after `OMDI_TOKEN_TTL`; every poll issues fresh links and invalidates earlier ones.
+- Newly succeeded multi-item jobs also expose `bundle`, containing `file_name`, `media_type` (`application/zip`), `size_bytes`, `download_url`, and `download_expires_at`. The ZIP combines ordered photos, videos, or audio from that job. Single-item jobs and jobs completed before the bundle migration omit it.
+- `GET /v1/bundles/{token}` downloads that ZIP without an API key. `HEAD` returns full-file headers without a body and ignores `Range`; GET supports ranges. Unsatisfiable item or bundle ranges return `416` and `Content-Range: bytes */<size>`.
 - `DELETE /v1/jobs/{id}` cancels a queued or running job.
 - `GET /v1/downloads/{token}` streams the file without an API key and supports `Range`. `HEAD` returns the same headers without the body.
 
@@ -158,6 +160,8 @@ Failures detailed as `forbidden`, `rate_limited`, or `network_error` are retried
 
 Each job accepts exactly one public post URL; profiles, channels, playlists, feeds, and collections are rejected. YouTube, Vimeo, TikTok, Instagram, and Reddit route through `yt-dlp`; X routes through `gallery-dl`. Instagram links that start with the account handle, such as `/{handle}/p/{shortcode}/`, are accepted and stored without the handle. A carousel remains one job with up to `OMDI_MAX_JOB_ITEMS` ordered results (20 by default). Outputs are compatibility-first MP4/M4A, MP3, JPEG, PNG, WebP, GIF, or QuickTime media. FFmpeg is used only for local H.264/AAC stream-copy remuxing; incompatible codecs are rejected instead of transcoded.
 
+The worker builds each bundle before marking the job succeeded; it uses the ZIP store method because media is already compressed. Polling replaces bundle links as well as item links, and their expiry never exceeds the job retention. Download immediately after the final poll; a link can be reused for HEAD and Range requests until replaced or expired. Revoking an API key prevents new polling but leaves issued links usable until expiry or job/key purge. Bundles remain on disk until their job is removed and use approximately another copy of the media.
+
 Jobs, files, and tokens are removed automatically after `OMDI_JOB_RETENTION`. Operators can manage jobs from the CLI:
 
 ```bash
@@ -178,7 +182,7 @@ Logs never include API keys, download tokens, submitted URLs, or internal paths;
 
 ## Bruno collection
 
-Open `collection/` in Bruno and select the `local` environment for host-local requests. The collection contains the `health`, `jobs`, and `downloads` folders with executable assertions. Requests that need a key read it from `OMDI_API_KEY` in `collection/.env`.
+Open `collection/` in Bruno and select the `local` environment for host-local requests. The collection contains the `health`, `jobs`, `downloads`, and `bundles` folders with executable assertions. Requests that need a key read it from `OMDI_API_KEY` in `collection/.env`.
 
 For production, copy `collection/.env.example` to `collection/.env`, replace the placeholder with the real HTTPS base URL, and select `production`. This file is separate from the project-root `.env` and is ignored by Git.
 
@@ -260,7 +264,7 @@ The full supported workflow remains Compose-first because it supplies the pinned
 
 ## Current limitations and roadmap
 
-Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed` with `error_detail` `login_required` or `blocked`; anti-bot checks are more frequent from datacenter addresses than from residential networks. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–4 are complete; Phase 5, bulk ZIP downloads for multi-item jobs, is next. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
+Private media, authenticated sessions, DRM bypass, and transcoding are intentionally unsupported; a video that its platform marks as DRM-protected, as some Vimeo videos are, fails as `extraction_failed`. Because the service never sends cookies or credentials, platforms that require a login for anonymous access fail as `extraction_failed` with `error_detail` `login_required` or `blocked`; anti-bot checks are more frequent from datacenter addresses than from residential networks. When this was verified on 2026-09-27, every platform worked anonymously within these limits: Instagram photos, videos, and mixed carousels; X photos and videos; Reddit-hosted videos, while Reddit image and gallery posts fail; and Vimeo videos whose owners allow embedding, while embed-restricted videos fail. Results vary by post, network, and platform policy, and anonymous access can be rate limited. Phases 0–5 are complete, including bulk bundle downloads for multi-item jobs. See the [Roadmap](docs/roadmap.md) and [Architecture](docs/architecture.md).
 
 ## Public repository safety
 

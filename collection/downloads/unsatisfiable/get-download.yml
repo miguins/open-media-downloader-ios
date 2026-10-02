@@ -1,0 +1,48 @@
+info:
+  name: get-download
+  type: http
+  seq: 1
+  tags:
+    - smoke
+
+http:
+  method: GET
+  headers:
+    - name: Range
+      value: bytes={{downloadSize}}-
+  url: "{{baseUrl}}/v1/downloads/{{downloadToken}}"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("range reports the complete item size", function () {
+          expect(res.getHeader("content-range")).to.equal("bytes */" + bru.getVar("downloadSize"));
+        });
+  assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
+    - expression: res.status
+      operator: eq
+      value: "416"
+    - expression: res.headers['content-type']
+      operator: eq
+      value: text/plain; charset=utf-8
+    - expression: res.headers['x-content-type-options']
+      operator: eq
+      value: nosniff
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: |-
+  Verifies that an unsatisfiable item range returns a range error and the complete media size.

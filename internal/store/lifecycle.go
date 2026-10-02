@@ -73,12 +73,12 @@ func (s *Store) ActiveJobCount(ctx context.Context, ownerID string) (int, error)
 
 // CompleteJob records a running job as succeeded together with its items in one transaction.
 // It returns ErrConflict when the job is no longer running and ErrNotFound when it no longer exists.
-func (s *Store) CompleteJob(ctx context.Context, j job.Job, items []job.Item) error {
+func (s *Store) CompleteJob(ctx context.Context, j job.Job, items []job.Item, bundle *job.Bundle) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: complete job: %w", err)
 	}
-	if err := completeJob(ctx, tx, j, items); err != nil {
+	if err := completeJob(ctx, tx, j, items, bundle); err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
 	if err := tx.Commit(); err != nil {
@@ -88,7 +88,7 @@ func (s *Store) CompleteJob(ctx context.Context, j job.Job, items []job.Item) er
 	return nil
 }
 
-func completeJob(ctx context.Context, tx *sql.Tx, j job.Job, items []job.Item) error {
+func completeJob(ctx context.Context, tx *sql.Tx, j job.Job, items []job.Item, bundle *job.Bundle) error {
 	err := requireAffected(tx.ExecContext(ctx,
 		`UPDATE jobs SET status = ?, error_code = NULL, updated_at = ?, finished_at = ?
 		WHERE id = ? AND owner_id = ? AND status = 'running'`,
@@ -107,12 +107,28 @@ func completeJob(ctx context.Context, tx *sql.Tx, j job.Job, items []job.Item) e
 	if err != nil {
 		return fmt.Errorf("store: complete job: %w", err)
 	}
+	if j.Status != job.StatusSucceeded || len(items) == 0 || (len(items) > 1) != (bundle != nil) {
+		return errors.New("store: invalid completion")
+	}
+	if bundle != nil && (bundle.JobID != j.ID || bundle.SizeBytes <= 0) {
+		return errors.New("store: invalid bundle")
+	}
+	for _, item := range items {
+		if item.JobID != j.ID {
+			return errors.New("store: invalid item ownership")
+		}
+	}
 	for _, item := range items {
 		if err := insertItem(ctx, tx, item); err != nil {
 			return err
 		}
 	}
 
+	if bundle != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO bundles(job_id,file_name,size_bytes,created_at) VALUES(?,?,?,?)", bundle.JobID, bundle.FileName, bundle.SizeBytes, toMillis(bundle.CreatedAt)); err != nil {
+			return fmt.Errorf("store: complete bundle: %w", err)
+		}
+	}
 	return nil
 }
 

@@ -90,6 +90,12 @@ func (w *deadlineWriter) extend() {
 	_ = w.controller.SetWriteDeadline(time.Now().Add(w.extension))
 }
 
+// WriteHeader preserves privacy headers on content-server errors.
+func (w *deadlineWriter) WriteHeader(status int) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.ResponseWriter.WriteHeader(status)
+}
+
 func (w *deadlineWriter) Write(p []byte) (int, error) {
 	w.extend()
 

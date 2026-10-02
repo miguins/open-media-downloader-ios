@@ -1,0 +1,59 @@
+info:
+  name: jobs
+  type: http
+  seq: 1
+  tags:
+    - smoke
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v1/jobs"
+  body:
+    type: json
+    data: |-
+      {
+        "url": "https://www.instagram.com/instagram/p/DduKfFmDxsG/"
+      }
+  auth:
+    type: bearer
+    token: "{{apiKey}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        bru.setVar("bundleJobId", res.body.id);
+        let status;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const poll = await bru.runRequest("bundles/get-job");
+          status = poll.data.status;
+          if (status !== "queued" && status !== "running") break;
+        }
+        if (status !== "succeeded") throw new Error("Bundle fixture did not succeed within the polling limit");
+    - type: tests
+      code: |-
+        test("queues the normalized job", function () {
+          const body = res.getBody();
+          expect(body.status).to.equal("queued");
+          expect(body.url).to.equal("https://www.instagram.com/p/DduKfFmDxsG/");
+          expect(body.platform).to.equal("instagram");
+          expect(body.error).to.equal(null);
+          expect(body.error_detail).to.equal(null);
+          expect(res.getHeader("location")).to.equal("/v1/jobs/" + body.id);
+        });
+  assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
+    - expression: res.status
+      operator: eq
+      value: "202"
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: Queues the Instagram mixed photo/video carousel example. Polls through the explicit request path to avoid ambiguous display names.

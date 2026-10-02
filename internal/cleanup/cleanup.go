@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/miguins/open-media-downloader-ios/internal/job"
 	"github.com/miguins/open-media-downloader-ios/internal/logging"
 	"github.com/miguins/open-media-downloader-ios/internal/storage"
 	"github.com/miguins/open-media-downloader-ios/internal/store"
@@ -49,6 +50,18 @@ func (c *Cleaner) Recover(ctx context.Context) error {
 	if err := c.layout.ClearWork(); err != nil {
 		return fmt.Errorf("cleanup: clear work directories: %w", err)
 	}
+
+	for _, status := range []job.Status{job.StatusFailed, job.StatusCanceled} {
+		jobs, err := c.store.Jobs(ctx, store.JobFilter{Status: status})
+		if err != nil {
+			return fmt.Errorf("cleanup: list interrupted jobs: %w", err)
+		}
+		for _, j := range jobs {
+			if err := c.layout.RemoveJob(j.ID); err != nil {
+				return fmt.Errorf("cleanup: remove interrupted files: %w", err)
+			}
+		}
+	}
 	orphans, err := c.sweepOrphans(ctx)
 	if err != nil {
 		return err
@@ -81,6 +94,11 @@ func (c *Cleaner) sweep(ctx context.Context) {
 	if err != nil {
 		c.logger.ErrorContext(ctx, "delete expired download tokens failed")
 	}
+	bundleTokens, err := c.store.DeleteExpiredBundleTokens(ctx, now)
+	if err != nil {
+		c.logger.ErrorContext(ctx, "delete expired bundle tokens failed")
+	}
+	tokens += bundleTokens
 	jobs := c.removeExpiredJobs(ctx, now)
 	orphans, err := c.sweepOrphans(ctx)
 	if err != nil {

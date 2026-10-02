@@ -42,31 +42,35 @@ type Settings struct {
 
 // Worker claims queued jobs from the store and runs them through the extractor.
 type Worker struct {
-	store         *store.Store
-	layout        *storage.Layout
-	extractor     Extractor
-	settings      Settings
-	logger        *slog.Logger
-	notify        chan struct{}
-	now           func() time.Time
-	pollInterval  time.Duration
-	watchInterval time.Duration
-	retryDelay    time.Duration
+	store          *store.Store
+	layout         *storage.Layout
+	extractor      Extractor
+	settings       Settings
+	logger         *slog.Logger
+	notify         chan struct{}
+	now            func() time.Time
+	pollInterval   time.Duration
+	watchInterval  time.Duration
+	retryDelay     time.Duration
+	availableBytes func() (uint64, error)
+	buildBundle    func(context.Context, string, []job.Item, int, int64, time.Time) (job.Bundle, error)
 }
 
 // New returns a Worker.
 func New(st *store.Store, layout *storage.Layout, ext Extractor, settings Settings, logger *slog.Logger) *Worker {
 	return &Worker{
-		store:         st,
-		layout:        layout,
-		extractor:     ext,
-		settings:      settings,
-		logger:        logger,
-		notify:        make(chan struct{}, 1),
-		now:           func() time.Time { return time.Now().UTC() },
-		pollInterval:  defaultPollInterval,
-		watchInterval: defaultWatchInterval,
-		retryDelay:    defaultRetryDelay,
+		store:          st,
+		layout:         layout,
+		extractor:      ext,
+		settings:       settings,
+		logger:         logger,
+		notify:         make(chan struct{}, 1),
+		now:            func() time.Time { return time.Now().UTC() },
+		pollInterval:   defaultPollInterval,
+		watchInterval:  defaultWatchInterval,
+		retryDelay:     defaultRetryDelay,
+		availableBytes: layout.AvailableBytes,
+		buildBundle:    layout.BuildBundle,
 	}
 }
 
@@ -129,14 +133,14 @@ func (w *Worker) runOnce(ctx context.Context) bool {
 }
 
 func (w *Worker) process(ctx context.Context, j job.Job) {
-	available, err := w.layout.AvailableBytes()
+	available, err := w.availableBytes()
 	if err != nil {
 		w.fail(ctx, j, job.ErrorInternal)
 
 		return
 	}
 	// Merging or remuxing keeps the input and the output on disk at the same time.
-	if available < uint64(w.settings.MinFreeBytes)+2*uint64(w.settings.MaxJobBytes) { //nolint:gosec // Settings are validated as non-negative.
+	if available < uint64(w.settings.MinFreeBytes)+2*uint64(w.settings.MaxJobBytes)+uint64(storage.BundleOverhead(w.settings.MaxJobItems)) { //nolint:gosec // Settings are validated as non-negative.
 		w.fail(ctx, j, job.ErrorTooLarge)
 
 		return
@@ -195,7 +199,7 @@ func (w *Worker) process(ctx context.Context, j job.Job) {
 		return
 	}
 
-	w.complete(ctx, j, files)
+	w.complete(ctx, jobCtx, j, files)
 }
 
 // extract runs the extractor, retrying once after a delay when the failure is transient. Each attempt
@@ -248,42 +252,84 @@ func (w *Worker) watch(ctx context.Context, jobID string, cancel context.CancelC
 	}
 }
 
-func (w *Worker) complete(ctx context.Context, j job.Job, files []extractor.File) {
+func (w *Worker) complete(ctx, jobCtx context.Context, j job.Job, files []extractor.File) {
+	items, bundle, err := w.prepareCompletion(jobCtx, j, files)
+	if err == nil {
+		err = jobCtx.Err()
+	}
+	if err != nil {
+		w.completionFailure(ctx, jobCtx, j, err)
+		return
+	}
+	done := j
+	_ = done.Transition(job.StatusSucceeded, "", w.now())
+	err = w.store.CompleteJob(jobCtx, done, items, bundle)
+	if err != nil {
+		w.completionFailure(ctx, jobCtx, j, err)
+		return
+	}
+	var size int64
+	for _, item := range items {
+		size += item.SizeBytes
+	}
+	attrs := []any{"items", len(items), "bytes", size, "duration_ms", w.elapsed(j)}
+	if bundle != nil {
+		attrs = append(attrs, "bundle_bytes", bundle.SizeBytes)
+	}
+	w.logger.InfoContext(ctx, "job succeeded", attrs...)
+}
+
+func (w *Worker) prepareCompletion(ctx context.Context, j job.Job, files []extractor.File) ([]job.Item, *job.Bundle, error) {
+	if len(files) > w.settings.MaxJobItems {
+		return nil, nil, storage.ErrTooLarge
+	}
 	outputs := make([]storage.Output, 0, len(files))
 	for _, file := range files {
 		outputs = append(outputs, storage.Output{Name: file.Name, MediaType: file.MediaType})
 	}
-	items, err := w.layout.Ingest(j.ID, outputs, w.settings.MaxJobBytes, w.now())
-	switch {
+	items, err := w.layout.Ingest(ctx, j.ID, outputs, w.settings.MaxJobBytes, w.now())
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = w.layout.RemoveWorkDir(j.ID); err != nil {
+		return nil, nil, err
+	}
+	if len(items) == 1 {
+		return items, nil, nil
+	}
+	var total int64
+	for _, item := range items {
+		total += item.SizeBytes
+	}
+	available, err := w.availableBytes()
+	if err != nil {
+		return nil, nil, err
+	}
+	//nolint:gosec // Configuration and ingested sizes are nonnegative and bounded.
+	if available < uint64(w.settings.MinFreeBytes)+uint64(total)+uint64(storage.BundleOverhead(len(items))) {
+		return nil, nil, storage.ErrTooLarge
+	}
+	bundle, err := w.buildBundle(ctx, j.ID, items, w.settings.MaxJobItems, w.settings.MaxJobBytes, w.now())
+	if err != nil {
+		return nil, nil, err
+	}
+	return items, &bundle, nil
+}
+
+func (w *Worker) completionFailure(ctx, jobCtx context.Context, j job.Job, err error) {
+	w.discard(ctx, j)
+	switch cause := context.Cause(jobCtx); {
+	case ctx.Err() != nil:
+		w.logger.InfoContext(ctx, "job interrupted by shutdown", "duration_ms", w.elapsed(j))
+	case errors.Is(cause, errCanceled), errors.Is(err, store.ErrConflict), errors.Is(err, store.ErrNotFound):
+		w.logger.InfoContext(ctx, "job canceled while completing", "duration_ms", w.elapsed(j))
+	case errors.Is(cause, errTimeout):
+		w.fail(ctx, j, job.ErrorTimeout)
 	case errors.Is(err, storage.ErrTooLarge):
 		w.fail(ctx, j, job.ErrorTooLarge)
-
-		return
 	case errors.Is(err, storage.ErrInvalidOutput):
 		w.failWith(ctx, j, job.ErrorExtractionFailed, &extractor.Failure{Detail: job.DetailInvalidOutput})
-
-		return
-	case err != nil:
-		w.fail(ctx, j, job.ErrorInternal)
-
-		return
-	}
-
-	done := j
-	_ = done.Transition(job.StatusSucceeded, "", w.now()) // Claimed jobs are running, so the transition is valid.
-	err = w.store.CompleteJob(ctx, done, items)
-	switch {
-	case err == nil:
-		var size int64
-		for _, item := range items {
-			size += item.SizeBytes
-		}
-		w.logger.InfoContext(ctx, "job succeeded", "items", len(items), "bytes", size, "duration_ms", w.elapsed(j))
-	case errors.Is(err, store.ErrConflict), errors.Is(err, store.ErrNotFound):
-		// The job was canceled or deleted while it ran; its files are no longer wanted.
-		w.discard(ctx, j)
 	default:
-		w.discard(ctx, j)
 		w.fail(ctx, j, job.ErrorInternal)
 	}
 }

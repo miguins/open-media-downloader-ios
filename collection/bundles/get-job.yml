@@ -1,0 +1,59 @@
+info:
+  name: get-job
+  type: http
+  seq: 2
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v1/jobs/{{bundleJobId}}"
+  auth:
+    type: bearer
+    token: "{{apiKey}}"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        // The worker is notified on creation; give it a moment before each poll.
+        await bru.sleep(500);
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body.status === "succeeded") {
+          bru.setVar("bundleToken", body.bundle.download_url.split("/").pop());
+          bru.setVar("bundleSize", body.bundle.size_bytes);
+        }
+    - type: tests
+      code: |-
+        test("returns a bundle for mixed media", function () {
+          const body = res.getBody();
+          if (body.status === "queued" || body.status === "running") return;
+          expect(body.status).to.equal("succeeded");
+          expect(body.items).to.have.lengthOf(2);
+          expect(body.items.map(item => item.media_type).sort()).to.deep.equal(["image/jpeg", "video/mp4"]);
+          expect(body.bundle.media_type).to.equal("application/zip");
+          expect(body.bundle.download_url).to.match(/\/v1\/bundles\/[A-Za-z0-9_-]{43}$/);
+          expect(body.bundle.size_bytes).to.be.greaterThan(0);
+        });
+  assertions:
+    - expression: res.headers['x-trace-id']
+      operator: matches
+      value: ^[a-z2-7]{26}$
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers['cache-control']
+      operator: eq
+      value: no-store
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: |-
+  Returns bundle metadata beside individual media links. The fixture creation request performs bounded polling.

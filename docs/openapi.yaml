@@ -1,7 +1,7 @@
 openapi: 3.2.1
 info:
   title: OpenMediaDownloaderIOS API
-  version: 0.4.0
+  version: 0.5.0
 servers:
   - url: http://localhost:8080
 paths:
@@ -141,7 +141,9 @@ paths:
       summary: Get a job
       description: >-
         Returns the job. A succeeded carousel job has several ordered items. Every call issues
-        fresh download links and invalidates links returned earlier for the same items.
+        fresh download links and invalidates links returned earlier for the same items and bundle.
+        Newly succeeded multi-item jobs include a ZIP bundle, which may contain photos and videos.
+        Single-item and legacy jobs without a persisted bundle omit it.
       security:
         - apiKey: []
       responses:
@@ -210,6 +212,8 @@ paths:
           $ref: "#/components/responses/Media"
         "206":
           $ref: "#/components/responses/Media"
+        "416":
+          $ref: "#/components/responses/RangeNotSatisfiable"
         "404":
           $ref: "#/components/responses/NotFound"
     head:
@@ -226,6 +230,89 @@ paths:
               $ref: "#/components/headers/NoStore"
         "404":
           description: The token is malformed, unknown, or expired.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+  /v1/bundles/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        description: Opaque, short-lived token from the job's bundle; the only download credential.
+        schema:
+          type: string
+    get:
+      operationId: downloadBundle
+      summary: Download a job's media bundle as ZIP
+      description: >-
+        Streams a persisted ZIP containing the ordered media items. Tokens may be reused
+        until replacement or expiry. Range requests are supported. Malformed, unknown,
+        replaced, expired, wrong-resource tokens and unavailable files share the same 404.
+        Existing tokens survive API-key revocation until expiry or job/key purge.
+      security: []
+      responses:
+        "200":
+          $ref: "#/components/responses/BundleFile"
+        "206":
+          $ref: "#/components/responses/BundleFile"
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "416":
+          $ref: "#/components/responses/RangeNotSatisfiable"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      operationId: headBundle
+      summary: Inspect a media bundle without downloading it
+      description: >-
+        Validates the same token as GET. Returns the full file's headers without a body.
+        Range is ignored; conditional headers retain GET semantics. Every error has no body.
+      security: []
+      responses:
+        "200":
+          description: Full ZIP headers without a body.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            Content-Type:
+              schema:
+                type: string
+                const: application/zip
+            Content-Length:
+              schema:
+                type: integer
+                minimum: 1
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename=omdi-abcdefgh.zip
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Last-Modified:
+              schema:
+                type: string
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+            Referrer-Policy:
+              schema:
+                type: string
+                const: no-referrer
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "404":
+          description: The token or bundle is unavailable; no body is returned.
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
@@ -372,6 +459,87 @@ components:
             $ref: "#/components/schemas/Error"
           example:
             error: internal
+    BundleFile:
+      description: Full ZIP or requested ranges, served as an attachment. Multiple ranges use multipart/byteranges.
+      headers:
+        X-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Content-Disposition:
+          schema:
+            type: string
+          example: attachment; filename=omdi-abcdefgh.zip
+        Content-Length:
+          schema:
+            type: integer
+            minimum: 1
+        Content-Range:
+          description: Included for a single partial range.
+          schema:
+            type: string
+          example: bytes 0-3/123456
+        Accept-Ranges:
+          schema:
+            type: string
+            const: bytes
+        Last-Modified:
+          schema:
+            type: string
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+        Referrer-Policy:
+          schema:
+            type: string
+            const: no-referrer
+      content:
+        application/zip:
+          schema:
+            type: string
+            format: binary
+        multipart/byteranges:
+          schema:
+            type: string
+            format: binary
+    RangeNotSatisfiable:
+      description: No requested byte range overlaps the file. Uses the content server's plain-text error format.
+      headers:
+        X-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Content-Range:
+          schema:
+            type: string
+          example: bytes */123456
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+        Referrer-Policy:
+          schema:
+            type: string
+            const: no-referrer
+      content:
+        text/plain:
+          schema:
+            type: string
+    NotModified:
+      description: The file has not changed according to the conditional request. No body.
+      headers:
+        X-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+    PreconditionFailed:
+      description: A conditional request's precondition failed. No body.
+      headers:
+        X-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
     Media:
       description: >-
         The media file, served as an attachment with `X-Content-Type-Options: nosniff`,
@@ -500,6 +668,9 @@ components:
           type: string
           format: date-time
           description: When the job and its files are removed.
+        bundle:
+          description: Present for newly succeeded multi-item jobs; absent for single-item and legacy jobs.
+          $ref: "#/components/schemas/Bundle"
         items:
           type: array
           description: Present only for succeeded jobs.
@@ -530,6 +701,32 @@ components:
           type: string
           format: uri
           description: Absolute link built from OMDI_PUBLIC_URL; replaced on every poll.
+        download_expires_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    Bundle:
+      type: object
+      required:
+        - file_name
+        - media_type
+        - size_bytes
+        - download_url
+        - download_expires_at
+      properties:
+        file_name:
+          type: string
+          description: Server-generated ZIP download name.
+        media_type:
+          type: string
+          const: application/zip
+        size_bytes:
+          type: integer
+          minimum: 1
+        download_url:
+          type: string
+          format: uri
+          description: Opaque-token URL at /v1/bundles/{token}, built from OMDI_PUBLIC_URL and replaced on every poll. May be reused for HEAD and Range until replacement or expiry.
         download_expires_at:
           type: string
           format: date-time

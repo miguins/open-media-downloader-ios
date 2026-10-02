@@ -140,7 +140,7 @@ review. Do not introduce substitute host-tool commands or unapproved commits.
 - Add `Bundle *bundleResponse` with `json:"bundle,omitempty"` to `jobResponse`.
 - Define `bundleResponse` with `file_name`, `media_type`, `size_bytes`, `download_url`, and `download_expires_at`, using the existing response field types and no ID.
 - Produce `(*jobHandler).bundleLink(request *http.Request, j job.Job) (*bundleResponse, error)` consuming owner-scoped metadata and token replacement from Task 1.
-- Fake multi-item fixture URL: `https://www.instagram.com/p/OMDI_BUNDLE_TEST/`; return one synthetic `video/mp4` and one `image/jpeg`. Existing URLs retain their one-item fixture.
+- Fake multi-item fixture URL: `https://www.instagram.com/p/DduKfFmDxsG/`, matching the approved collection example; return one synthetic `video/mp4` and one `image/jpeg`. Other URLs retain their one-item fixture.
 
 - [ ] Write `TestSucceededJobIssuesBundleLink`: use `newAPIFixture`, genuine two-item completion and ZIP storage; assert the exact five-field schema, media type, size/name, `/base/v1/bundles/` URL prefix, independent token rotation, and expiry capped by job expiry. Other-owner polling returns `404` without issuing tokens.
 - [ ] Write `TestJobOmitsBundle`: single-item, queued, running, failed, canceled, and legacy succeeded multi-item jobs omit the field. Write `TestBundleLinkIssuanceFailure`: metadata/token storage failure yields safe no-store `500`, not a silently omitted bundle.

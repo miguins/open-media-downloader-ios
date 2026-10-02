@@ -56,5 +56,8 @@ func NewRouter(deps Dependencies) http.Handler {
 	router.Get("/v1/downloads/{token}", downloads.serve)
 	router.Head("/v1/downloads/{token}", downloads.serve)
 
+	bundles := &bundleHandler{deps: deps}
+	router.Get("/v1/bundles/{token}", bundles.serve)
+	router.Head("/v1/bundles/{token}", bundles.serve)
 	return router
 }

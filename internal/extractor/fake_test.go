@@ -32,3 +32,52 @@ func TestFakeHonorsLimits(t *testing.T) {
 		t.Fatal("Extract(missing dir) error = nil")
 	}
 }
+
+func TestFakeWritesMixedBundleFixture(t *testing.T) {
+	request := Request{URL: "https://www.instagram.com/p/DduKfFmDxsG/", Platform: "instagram", WorkDir: t.TempDir(), MaxBytes: 1 << 20, MaxItems: 20}
+	files, err := (Fake{}).Extract(context.Background(), request)
+	if err != nil || len(files) != 2 || files[0].MediaType != "video/mp4" || files[1].MediaType != "image/jpeg" {
+		t.Fatalf("mixed fixture: %#v %v", files, err)
+	}
+	request.MaxItems = 1
+	if _, err := (Fake{}).Extract(context.Background(), request); err == nil {
+		t.Fatal("item limit ignored")
+	}
+	request.MaxItems = 20
+	request.MaxBytes = int64(len(fakeMedia))
+	if _, err := (Fake{}).Extract(context.Background(), request); err == nil {
+		t.Fatal("aggregate byte limit ignored")
+	}
+}
+
+func TestFakeMixedFixtureWriteFailure(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "fake.jpg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Fake{}).Extract(context.Background(), Request{URL: "https://www.instagram.com/p/DduKfFmDxsG/", WorkDir: dir, MaxBytes: 1 << 20, MaxItems: 20}); err == nil {
+		t.Fatal("second write failure ignored")
+	}
+}
+
+type fakeCanceledDuringWork struct {
+	context.Context
+	cancel context.CancelFunc
+	checks int
+}
+
+func (c *fakeCanceledDuringWork) Err() error {
+	c.checks++
+	if c.checks == 2 {
+		c.cancel()
+	}
+	return c.Context.Err()
+}
+func TestFakeCancellationBetweenWrites(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	controlled := &fakeCanceledDuringWork{Context: ctx, cancel: cancel}
+	if _, err := (Fake{}).Extract(controlled, Request{WorkDir: t.TempDir(), MaxBytes: 1 << 20, MaxItems: 20}); err == nil {
+		t.Fatal("fake ignored work cancellation")
+	}
+}

@@ -96,7 +96,14 @@ COPY --from=ffmpeg-builder /opt/ffmpeg/ /opt/ffmpeg/
 COPY --from=media-tools-builder /opt/media-tools/ /opt/media-tools/
 COPY --from=builder /tmp/omdi /usr/local/bin/omdi
 ENV PATH="/opt/ffmpeg/bin:/opt/media-tools/bin:${PATH}"
-RUN rm -rf \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpcre2-8-0=10.46-1~deb13u3 \
+        libssl3t64=3.5.7-1~deb13u3 \
+        openssl=3.5.7-1~deb13u3 \
+        openssl-provider-legacy=3.5.7-1~deb13u3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf \
         /usr/local/lib/python3.14/ensurepip \
         /usr/local/lib/python3.14/site-packages/pip \
         /usr/local/lib/python3.14/site-packages/pip-*.dist-info \

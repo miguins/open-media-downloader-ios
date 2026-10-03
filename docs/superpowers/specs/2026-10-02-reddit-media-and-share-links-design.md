@@ -2,10 +2,11 @@
 
 ## Status and Intended Outcome
 
-Approved by the user on 2026-10-02, with authorization to commit this
-specification. Product behavior changes remain subject to implementation-plan
-approval and execution-method selection. Phases 0–5 remain complete; this is a
-focused follow-up fix.
+Initially approved by the user on 2026-10-02. The user approved the subsequent
+yt-dlp native-media correction on 2026-10-03. Implementation and user validation
+completed on main; the user subsequently authorized final commits. The Bruno
+collection remains unchanged. Phases 0–5 remain complete; this is a focused
+follow-up fix.
 
 A user should be able to submit a public Reddit post using either its direct URL
 or the mobile share URL and download the post's supported media. The reported
@@ -21,21 +22,9 @@ video audio, resource limits, and operation without user credentials.
 
 ## Alternatives and Decision
 
-1. **Route Reddit through gallery-dl.** Reuse its native post-media extraction
-   and the existing gallery adapter, including yt-dlp integration for native
-   video manifests. This is recommended because one extraction path covers
-   images, galleries, and videos.
-2. **Keep yt-dlp first and fall back to gallery-dl.** This preserves the current
-   video path but introduces repeated requests, partial-output cleanup, and
-   fragile failure-based routing for ordinary image posts.
-3. **Implement Reddit JSON extraction in Go.** This offers explicit media
-   selection but duplicates upstream session, crosspost, gallery, and video
-   handling. It is unnecessary for this fix.
+The initial approved design routed Reddit through gallery-dl. Live comparison showed its public REST access blocked on the verification network while yt-dlp's anonymous Reddit session could read the same post. The user subsequently approved the yt-dlp direction for images and galleries, preserving working native video behavior.
 
-Resolve share redirects explicitly in Go before invoking gallery-dl. Its built-in
-share extractor queues another extractor, which conflicts with the adapter's
-empty child-extractor whitelist and does not provide the application's final
-post validation boundary.
+Use the pinned yt-dlp Reddit extractor's anonymous session to obtain post metadata and download native media directly. This avoids repeated REST requests and failure-based routing. Capture metadata in a concrete Reddit extractor subclass, inspect the first unprocessed result, and never follow URL-transparent or playlist children. Resolve share redirects explicitly in Go before extraction, preserving the application's final post validation boundary. X remains on gallery-dl.
 
 ## URL Acceptance and Redirect Resolution
 
@@ -73,7 +62,7 @@ allowed share/short URL or a direct post/gallery URL. Reject credentials,
 non-HTTPS URLs, non-default ports, unsupported paths, other platforms, and
 malformed locations. The proxy continues to validate DNS and connected public
 addresses at every hop. On reaching a direct post/gallery URL, stop resolving
-and pass its normalized value to gallery-dl without an extra page request.
+and pass its normalized value to the native-media adapter without an extra page request.
 
 Reject missing Location, redirect loops, exhausted hop counts, and a final
 non-redirect share response; do not treat page HTML as proof of a valid post.
@@ -82,33 +71,13 @@ resolution and media extraction together.
 
 ## Reddit Media Extraction
 
-Change `internal/extractor/real.go` to route Reddit through `GalleryDL` after
-share resolution; keep other platform routes as currently implemented.
-Extend `GalleryDL` request validation to allow Reddit and X. Keep Reddit-specific
-options separate from X options.
+Route Reddit through `YTDLP.ExtractRedditMedia` after share resolution, keeping other platform routes unchanged. Run a fixed helper with isolated Python from the same pinned virtual environment as the configured yt-dlp executable. Pass JSON options and the resolved URL as separate subprocess arguments; disable plugin directories and external components.
 
-Configure Reddit explicitly for public REST access, zero comments, zero
-recursion, no self-text links, and no preview fallback. Retain
-`extractor.whitelist=[]` to prevent child extractors from following external
-post links. Native media in crossposts may be handled by gallery-dl's existing
-post-media logic. Do not introduce credentials, cookie imports, or a generic
-external-link downloader.
+A concrete Reddit extractor subclass captures the post JSON fetched by upstream's anonymous session. Extract without downloading or processing child results. Native video formats retain the existing compatibility selection, pinned FFmpeg stream-copy merge, bounded retries, and missing-fragment rejection. Native crosspost videos remain supported by upstream's metadata handling. Do not introduce credentials or cookie imports.
 
-Use Reddit's DASH video mode and the yt-dlp downloader module already installed
-with the application. Set its proxy explicitly to the same session, use the
-existing `ytdlpFormat` preference, configure the existing FFmpeg path, and merge
-compatible audio/video into MP4 without transcoding. Bound retries, socket
-timeouts, fragments, file sizes, and output diagnostics consistently with the
-existing adapters. Disable remote components, ancillary metadata downloads,
-and extra output files. Use gallery-dl's generated `item-NNN.extension` names
-for both images and merged videos. Any adapter constructor change is wired
-through the existing app composition and its tests.
+A native single image must resolve directly to an HTTPS `i.redd.it` original with a safe supported filename. Galleries use `gallery_data.items` order and valid `media_metadata` original sources. Preview-host gallery source URLs are converted to their original `i.redd.it` URLs; standalone preview URLs and thumbnail substitution remain excluded. Validate all gallery sources and the item count before creating files. Reject incomplete or malformed galleries rather than silently dropping entries.
 
-Keep the existing `MaxItems + 1` detection, byte limits, safe output discovery,
-media inspection, storage ingestion, and bundle creation. Native images are
-delivered as media files, never replaced by thumbnails. Unsupported media
-codecs/types fail existing validation. Empty output produces `no_media` rather
-than success; no partial gallery is marked succeeded after an extraction error.
+Stream image downloads through the same downloader/proxy session into exclusive `0600` fixed-name files. Enforce cumulative image bytes alongside the session-wide transfer budget, and abort on truncated bodies or failed requests. Reuse safe numbered discovery, media inspection, storage ingestion, and bundle creation. A failed adapter returns no publishable files. Genuine absence of native media returns `no_media`; access errors retain their existing failure classification.
 
 ## Errors, Privacy, and HTTP Contract
 

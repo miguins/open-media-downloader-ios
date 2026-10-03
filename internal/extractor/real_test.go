@@ -25,13 +25,18 @@ func TestRealRoutesYouTube(t *testing.T) {
 
 func TestRealRoutesEveryPlatform(t *testing.T) {
 	for platform, want := range map[string]string{
-		"youtube": "yt-dlp", "vimeo": "yt-dlp", "tiktok": "yt-dlp", "instagram": "yt-dlp", "reddit": "yt-dlp",
+		"youtube": "yt-dlp", "vimeo": "yt-dlp", "tiktok": "yt-dlp", "instagram": "yt-dlp", "reddit": "reddit-native",
 		"x": "gallery-dl",
 	} {
 		var got []string
 		r := &Real{
-			beginSession: func(context.Context, int64) (proxySession, error) { return testSession{}, nil },
-			ytdlp:        func(context.Context, Request, string) ([]File, error) { got = append(got, "yt-dlp"); return nil, nil },
+			beginSession:  func(context.Context, int64) (proxySession, error) { return testSession{}, nil },
+			resolveReddit: func(_ context.Context, raw, _ string) (string, error) { return raw, nil },
+			ytdlp:         func(context.Context, Request, string) ([]File, error) { got = append(got, "yt-dlp"); return nil, nil },
+			redditMedia: func(context.Context, Request, string) ([]File, error) {
+				got = append(got, "reddit-native")
+				return nil, nil
+			},
 			gallery: func(context.Context, Request, string) ([]File, error) {
 				got = append(got, "gallery-dl")
 				return nil, nil

@@ -45,6 +45,12 @@ func (Fake) Extract(ctx context.Context, request Request) ([]File, error) {
 	if request.URL == "https://www.instagram.com/p/DduKfFmDxsG/" {
 		files = append(files, File{Name: "fake.jpg", MediaType: "image/jpeg"})
 	}
+	switch request.URL {
+	case "https://www.reddit.com/comments/abc123/", "https://www.reddit.com/r/example/s/Ab12Cd34Ef/":
+		files = []File{{Name: "fake.jpg", MediaType: "image/jpeg"}}
+	case "https://www.reddit.com/gallery/def456/":
+		files = []File{{Name: "fake-1.jpg", MediaType: "image/jpeg"}, {Name: "fake-2.jpg", MediaType: "image/jpeg"}}
+	}
 	if len(files) > request.MaxItems || int64(len(fakeMedia))*int64(len(files)) > request.MaxBytes {
 		return nil, ErrTooLarge
 	}

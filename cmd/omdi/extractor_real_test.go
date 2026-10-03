@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewExtractorComponentsUsesReal(t *testing.T) {
-	c, err := newExtractorComponents(config.Config{})
+	c, err := newExtractorComponents(config.Config{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

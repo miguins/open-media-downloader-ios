@@ -137,7 +137,7 @@ func serve(ctx context.Context, cfg config.Config, st *store.Store, logger *slog
 
 		return 1
 	}
-	components, err := newExtractorComponents(cfg)
+	components, err := newExtractorComponents(cfg, policy)
 	if err != nil {
 		logger.ErrorContext(ctx, "configure extractors")
 		return 1

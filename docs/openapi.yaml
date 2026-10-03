@@ -94,7 +94,10 @@ paths:
                   description: >-
                     One public post on an allowed platform; profiles, channels, playlists, feeds, and
                     collections are rejected. Tracking parameters are removed, and an Instagram post
-                    link that starts with the account handle is stored without the handle.
+                    link that starts with the account handle is stored without the handle. Reddit subreddit
+                    share links (/r/{subreddit}/s/{code}) are accepted and resolved during extraction;
+                    the normalized share URL remains stored. Reddit native images, galleries, and
+                    videos are supported; external links and preview-only posts return no_media.
               additionalProperties: false
             example:
               url: https://vimeo.com/123

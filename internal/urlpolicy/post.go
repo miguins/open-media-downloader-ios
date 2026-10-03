@@ -16,7 +16,7 @@ var (
 	tikTokPost    = regexp.MustCompile(`^/(@[A-Za-z0-9_.]+/video/[0-9]+|t/[A-Za-z0-9]+)/?$`)
 	xPost         = regexp.MustCompile(`^/[A-Za-z0-9_]+/status/[0-9]+/?$`)
 	redditShort   = regexp.MustCompile(`^/[A-Za-z0-9]+/?$`)
-	redditPost    = regexp.MustCompile(`^/((r/[A-Za-z0-9_]+/)?comments/[A-Za-z0-9]+(/[A-Za-z0-9_-]+)?|gallery/[A-Za-z0-9]+)/?$`)
+	redditPost    = regexp.MustCompile(`^/((r/[A-Za-z0-9_]+/)?comments/[A-Za-z0-9]+(/[A-Za-z0-9_-]+)?|gallery/[A-Za-z0-9]+|r/[A-Za-z0-9_]+/s/[A-Za-z0-9]{10})/?$`)
 	vimeoPost     = regexp.MustCompile(`^/[0-9]+/?$`)
 	vimeoPlayer   = regexp.MustCompile(`^/video/[0-9]+/?$`)
 )

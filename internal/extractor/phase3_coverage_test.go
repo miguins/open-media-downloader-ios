@@ -448,8 +448,15 @@ func TestNewReal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := NewReal(p, &YTDLP{}, &GalleryDL{})
+	r := NewReal(p, &YTDLP{}, &GalleryDL{}, redditPolicy(t))
 	r.ytdlp = func(context.Context, Request, string) ([]File, error) { return nil, nil }
+	r.gallery = func(context.Context, Request, string) ([]File, error) { return nil, nil }
+	r.redditMedia = func(context.Context, Request, string) ([]File, error) { return nil, nil }
+	redditRequest := adapterRequest(t.TempDir(), "reddit", 1)
+	redditRequest.URL = "https://www.reddit.com/comments/abc123/"
+	if _, err := r.Extract(t.Context(), redditRequest); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.Extract(t.Context(), adapterRequest(t.TempDir(), "youtube", 1)); err != nil {
 		t.Fatal(err)
 	}

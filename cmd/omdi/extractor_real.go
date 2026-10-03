@@ -17,7 +17,7 @@ type extractorComponents struct {
 	run       func(context.Context) error
 }
 
-func newExtractorComponents(cfg config.Config) (extractorComponents, error) {
+func newExtractorComponents(cfg config.Config, policy *urlpolicy.Policy) (extractorComponents, error) {
 	runner := extractor.NewRunner()
 	media := extractor.NewMediaTools(cfg.Tools.FFprobe, cfg.Tools.FFmpeg, runner)
 	proxy, err := urlpolicy.NewProxy(net.DefaultResolver, &net.Dialer{Control: urlpolicy.DialControl})
@@ -26,5 +26,5 @@ func newExtractorComponents(cfg config.Config) (extractorComponents, error) {
 	}
 	ytdlp := extractor.NewYTDLP(cfg.Tools.YTDLP, cfg.Tools.FFmpeg, runner, media)
 	gallery := extractor.NewGalleryDL(cfg.Tools.GalleryDL, runner, media)
-	return extractorComponents{extractor: extractor.NewReal(proxy, ytdlp, gallery), run: proxy.Run}, nil
+	return extractorComponents{extractor: extractor.NewReal(proxy, ytdlp, gallery, policy), run: proxy.Run}, nil
 }

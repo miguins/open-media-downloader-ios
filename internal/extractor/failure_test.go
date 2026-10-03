@@ -28,6 +28,7 @@ func TestClassifyStderr(t *testing.T) {
 		"ERROR: [tiktok] 1: Unable to download webpage: <urlopen error [Errno 111] Connection refused>":      job.DetailNetworkError,
 		"ERROR: [youtube] abc: Unable to download API page: The read operation timed out":                    job.DetailNetworkError,
 		"ERROR: [youtube] abc: Unable to extract initial player response":                                    job.DetailToolError,
+		"[reddit][error] \"You've been blocked by network security.\"":                                       job.DetailBlocked,
 		"WARNING: [youtube] Sign in to confirm you're not a bot\n":                                           job.DetailToolError,
 		"": job.DetailToolError,
 	} {

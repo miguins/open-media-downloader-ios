@@ -10,6 +10,16 @@ Status values are `Complete`, `In progress`, and `Planned`. A phase must be comp
 
 No further milestone is currently defined.
 
+### Reddit media and share links follow-up
+
+**Status: Complete** — [design](superpowers/specs/2026-10-02-reddit-media-and-share-links-design.md), [plan](superpowers/plans/2026-10-02-reddit-media-and-share-links.md)
+
+- Download native Reddit images, ordered galleries, and videos with yt-dlp's anonymous post session.
+- Resolve subreddit share URLs inside the worker's validated egress session.
+- Preserve submitted normalized job URLs and existing media/bundle contracts.
+- Verified with complete `make ci`, including pinned real-tool native image, ordered gallery, DASH/progressive audio-video, oversized-video, missing-fragment, access-error privacy, unsafe-original, truncated-download, and preview rejection tests. Unit coverage is 96.9%, with 100% for security-critical packages.
+- Existing Bruno collection remains unchanged by explicit scope decision. Public REST access was blocked on the verification network; native media now uses yt-dlp directly. Live API downloads verified a JPEG through a share URL and an H.264/AAC MP4. Ordered galleries passed pinned-tool synthetic integration tests; live gallery verification is not claimed. The user validated the delivered behavior and authorized final commits on main.
+
 The Phase 1 and Phase 2 documents under `docs/superpowers/records/` were consolidated at their handoffs and record delivered scope; they are not pre-implementation plans under the current Superpowers format. Phase 3 and later phases follow the complete current workflow before implementation begins.
 
 ## Phase 0 — Project foundation

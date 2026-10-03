@@ -19,16 +19,21 @@ type adapterFunc func(context.Context, Request, string) ([]File, error)
 
 // Real routes supported platforms through real extractors behind one egress session.
 type Real struct {
-	beginSession beginSessionFunc
-	ytdlp        adapterFunc
-	gallery      adapterFunc
+	beginSession  beginSessionFunc
+	ytdlp         adapterFunc
+	gallery       adapterFunc
+	redditMedia   adapterFunc
+	resolveReddit func(context.Context, string, string) (string, error)
 }
 
 // NewReal constructs production extractor routing.
-func NewReal(proxy *urlpolicy.Proxy, ytdlp *YTDLP, gallery *GalleryDL) *Real {
+func NewReal(proxy *urlpolicy.Proxy, ytdlp *YTDLP, gallery *GalleryDL, policy *urlpolicy.Policy) *Real {
 	return &Real{
 		beginSession: func(ctx context.Context, maxBytes int64) (proxySession, error) { return proxy.Begin(ctx, maxBytes) },
-		ytdlp:        ytdlp.Extract, gallery: gallery.Extract,
+		ytdlp:        ytdlp.Extract, gallery: gallery.Extract, redditMedia: ytdlp.ExtractRedditMedia,
+		resolveReddit: func(ctx context.Context, raw, proxyURL string) (string, error) {
+			return resolveRedditURL(ctx, raw, proxyURL, policy)
+		},
 	}
 }
 
@@ -44,10 +49,15 @@ func (r *Real) Extract(ctx context.Context, request Request) ([]File, error) {
 	defer func() { _ = session.Close() }()
 	var files []File
 	switch request.Platform {
-	case "youtube", "vimeo", "tiktok", "instagram", "reddit":
+	case "youtube", "vimeo", "tiktok", "instagram":
 		files, err = r.ytdlp(ctx, request, session.URL())
 	case "x":
 		files, err = r.gallery(ctx, request, session.URL())
+	case "reddit":
+		request.URL, err = r.resolveReddit(ctx, request.URL, session.URL())
+		if err == nil {
+			files, err = r.redditMedia(ctx, request, session.URL())
+		}
 	default:
 		err = errors.New("extractor: unsupported platform")
 	}

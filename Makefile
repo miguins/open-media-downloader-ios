@@ -9,7 +9,7 @@ APP_BUILD := mkdir -p "$$GOTMPDIR"; go build -trimpath -o $(APP_BINARY) ./cmd/om
 ACTIONLINT_IMAGE := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 TRIVY_IMAGE := aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
-.PHONY: bootstrap fmt fmt-check test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check production-smoke workflow-lint compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
+.PHONY: bootstrap fmt fmt-check test tool-integration-test coverage lint vuln secret-scan build docker-build image-scan smoke real-smoke compose-check production-smoke workflow-lint compose-up dev compose-up-detached compose-down key-create key-list key-revoke key-purge job-list job-delete job-purge collection-test ci
 
 bootstrap:
 	command -v docker >/dev/null
@@ -19,13 +19,16 @@ bootstrap:
 	$(TOOLS_RUN) sh -ec 'go version; python --version; go tool golangci-lint version; go tool govulncheck -version; yt-dlp --version; gallery-dl --version; ffmpeg -version | head -n 1; ffprobe -version | head -n 1'
 
 fmt:
-	$(TOOLS_RUN) sh -ec 'gofmt -w $$(find cmd internal -type f -name "*.go")'
+	$(TOOLS_RUN) sh -ec 'gofmt -w $$(find cmd internal tests -type f -name "*.go")'
 
 fmt-check:
-	$(TOOLS_RUN) sh -ec 'files=$$(gofmt -l cmd internal); test -z "$$files" || { printf "%s\n" "$$files"; exit 1; }'
+	$(TOOLS_RUN) sh -ec 'files=$$(gofmt -l cmd internal tests); test -z "$$files" || { printf "%s\n" "$$files"; exit 1; }'
 
 test:
 	$(TOOLS_RUN) go test -race -count=1 ./...
+
+tool-integration-test:
+	$(TOOLS_RUN) go test -tags=omdi_toolintegration -count=1 ./tests
 
 coverage:
 	$(TOOLS_RUN) sh -ec 'go test -covermode=atomic -coverpkg=./internal/... -coverprofile=/tmp/coverage.out ./internal/... && ./scripts/check-coverage.sh /tmp/coverage.out'
@@ -125,6 +128,7 @@ collection-test:
 ci:
 	$(MAKE) fmt-check
 	$(MAKE) test
+	$(MAKE) tool-integration-test
 	$(MAKE) coverage
 	$(MAKE) lint
 	$(MAKE) workflow-lint

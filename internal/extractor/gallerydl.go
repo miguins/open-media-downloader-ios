@@ -31,7 +31,11 @@ func NewGalleryDL(path string, runner *Runner, media *MediaTools) *GalleryDL {
 
 // Extract downloads and validates one gallery-backed public post.
 func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL string) ([]File, error) {
-	if !validAdapterRequest(request, "x") || !validProxyURL(proxyURL) {
+	return g.extract(ctx, request, proxyURL)
+}
+
+func (g *GalleryDL) extract(ctx context.Context, request Request, proxyURL string) ([]File, error) {
+	if !validAdapterRequest(request, "x", "reddit") || !validProxyURL(proxyURL) {
 		return nil, errors.New("extractor: invalid adapter request")
 	}
 	args := []string{
@@ -40,17 +44,29 @@ func (g *GalleryDL) Extract(ctx context.Context, request Request, proxyURL strin
 		"--range", "1-" + strconv.Itoa(request.MaxItems+1), "--filesize-max", strconv.FormatInt(request.MaxBytes, 10),
 		"--retries", "3", "--http-timeout", "30", "-o", "cache.file=:memory:",
 		// An empty whitelist stops child extractors, such as external links in Reddit posts.
-		"-o", "extractor.whitelist=[]", "--", request.URL,
+		"-o", "extractor.whitelist=[]",
 	}
+	if request.Platform == "reddit" {
+		args = append(args, redditGalleryOptions(request, proxyURL, g.media.ffmpegPath)...)
+	}
+	args = append(args, "--", request.URL)
 	result, err := g.runner.Run(ctx, Command{Path: g.path, Args: args, Dir: request.WorkDir, StdoutLimit: 256 << 10, StderrLimit: 64 << 10})
+	// A downloader may emit the size-limit marker before returning a nonzero exit.
+	if ctx.Err() == nil && (err == nil || errors.Is(err, ErrCommandExit)) && result.Signal == "" &&
+		(bytes.Contains(result.Stderr, galleryTooLarge) || bytes.Contains(result.Stderr, ytdlpTooLarge) || bytes.Contains(result.Stdout, ytdlpTooLarge)) {
+		return nil, ErrTooLarge
+	}
 	if err != nil {
 		return nil, toolFailure(ctx, "gallery-dl", job.DetailToolError, result, err)
 	}
-	// gallery-dl skips an oversized file with a warning and continues successfully.
-	if bytes.Contains(result.Stderr, galleryTooLarge) {
-		return nil, ErrTooLarge
+	entries, err := numberedEntries(request.WorkDir)
+	if err != nil {
+		return nil, err
 	}
-	names, err := discoverGallery(request.WorkDir, request.MaxItems)
+	if request.Platform == "reddit" && len(entries) == 0 {
+		return nil, &Failure{Detail: job.DetailNoMedia, Tool: "gallery-dl"}
+	}
+	names, err := orderedNames(entries, request.MaxItems)
 	if err != nil {
 		return nil, err
 	}

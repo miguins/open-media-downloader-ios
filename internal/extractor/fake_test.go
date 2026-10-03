@@ -19,6 +19,36 @@ func TestFakeWritesSyntheticMedia(t *testing.T) {
 	}
 }
 
+func TestFakeRedditFixtures(t *testing.T) {
+	for raw, count := range map[string]int{
+		"https://www.reddit.com/comments/abc123/":        1,
+		"https://www.reddit.com/r/example/s/Ab12Cd34Ef/": 1,
+		"https://www.reddit.com/gallery/def456/":         2,
+	} {
+		request := Request{URL: raw, Platform: "reddit", WorkDir: t.TempDir(), MaxBytes: 1 << 20, MaxItems: 2}
+		files, err := (Fake{}).Extract(t.Context(), request)
+		if err != nil || len(files) != count {
+			t.Fatalf("fixture count = %d, %v", len(files), err)
+		}
+		for _, file := range files {
+			if file.MediaType != "image/jpeg" {
+				t.Fatalf("media type = %s", file.MediaType)
+			}
+		}
+		request.MaxBytes = 1
+		if _, err := (Fake{}).Extract(t.Context(), request); err == nil {
+			t.Fatal("byte limit ignored")
+		}
+		if count == 2 {
+			request.MaxBytes = 1 << 20
+			request.MaxItems = 1
+			if _, err := (Fake{}).Extract(t.Context(), request); err == nil {
+				t.Fatal("item limit ignored")
+			}
+		}
+	}
+}
+
 func TestFakeHonorsLimits(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
